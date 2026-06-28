@@ -9,6 +9,7 @@ import { and, desc, gte, lt, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { useEffect, useState } from "react";
 import { Link, useFetcher, type MetaFunction } from "react-router";
+import { ensurePasswordAccess } from "~/passwordAccess.server";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/table";
 
@@ -19,11 +20,13 @@ export const meta: MetaFunction = () => {
 const pageLength = 50;
 export async function loader({ context, request, params }: Route.LoaderArgs) {
   const cursor = params.cursor;
-  let refDate = params.date
-    ? DateTime.fromFormat(params.date, "yyyy-MM-dd", { zone: "utc" })
-    : DateTime.now().toUTC();
-  refDate = refDate.set({ hour: 0, minute: 0, second: 0, millisecond: 0 });
-  const urlDate = refDate.toFormat("yyyy-MM-dd");
+  const { refDate, urlDate, password } = await ensurePasswordAccess({
+    db: context.db,
+    password: params.password,
+    dateParam: params.date,
+    request,
+    env: context.cloudflare.env,
+  });
 
   const events = await context.db
     .select({
@@ -56,6 +59,7 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
     events,
     count: count[0].count,
     date: urlDate,
+    password,
   };
 }
 
@@ -78,7 +82,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
   const loadNext = () => {
     if (fetcher.state === "loading") return;
     const cursor = events[events.length - 1].id;
-    fetcher.load(`/${loaderData.date}/table/${cursor}`);
+    fetcher.load(`/${loaderData.password}/${loaderData.date}/table/${cursor}`);
   };
   return (
     <Container fluid p={"md"}>
@@ -86,13 +90,13 @@ export default function Page({ loaderData }: Route.ComponentProps) {
         <Button
           leftSection={<IconChevronLeft />}
           component={Link}
-          to={`/${loaderData.date}`}
+          to={`/${loaderData.password}/${loaderData.date}`}
         >
           Back to Map
         </Button>
         <Button
           leftSection={<IconDownload />}
-          href={`/${loaderData.date}/export.gpx`}
+          href={`/${loaderData.password}/${loaderData.date}/export.gpx`}
           component="a"
         >
           Download GPX

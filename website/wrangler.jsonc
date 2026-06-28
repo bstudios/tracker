@@ -8,7 +8,7 @@
       "database_id": "3dfa76f7-8cc4-435e-8975-dc8b112f1b8f",
       "migrations_table": "migrations",
       "migrations_dir": "database/migrations",
-      "remote": true
+      "remote": false
     }
   ],
   "routes": [
@@ -17,7 +17,20 @@
       "custom_domain": true
     }
   ],
-  "vars": {},
+  "vars": {
+    "CLOUDFLARE_ACCESS_POLICY_AUD": "",
+    "CLOUDFLARE_ACCESS_TEAM_DOMAIN": ""
+  },
+  "ratelimits": [
+    {
+      "name": "TRACKER_PASSWORD_LOGIN_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    }
+  ],
   "main": "./workers/app.ts",
   "compatibility_date": "2026-06-23",
   "compatibility_flags": ["nodejs_compat"],

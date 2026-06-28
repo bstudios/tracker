@@ -2,7 +2,8 @@ import { Center, Stack, Title } from "@mantine/core";
 import { DatePicker } from "@mantine/dates";
 import { and, desc, gte, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
-import { useNavigate, type MetaFunction } from "react-router";
+import { redirect, useNavigate, type MetaFunction } from "react-router";
+import { ensurePasswordAccess } from "~/passwordAccess.server";
 import { LiveMap } from "~/components/LiveMap/LiveMap";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/map";
@@ -11,12 +12,18 @@ export const meta: MetaFunction = () => {
   return [{ title: "Tracking" }];
 };
 
-export async function loader({ context, params }: Route.LoaderArgs) {
-  let refDate = params.date
-    ? DateTime.fromFormat(params.date, "yyyy-MM-dd", { zone: "utc" })
-    : DateTime.now().toUTC();
-  refDate = refDate.set({ hour: 0, minute: 0, second: 0, millisecond: 0 });
-  const urlDate = refDate.toFormat("yyyy-MM-dd");
+export async function loader({ context, params, request }: Route.LoaderArgs) {
+  if (!params.password) {
+    throw redirect("/");
+  }
+
+  const { refDate, urlDate, password } = await ensurePasswordAccess({
+    db: context.db,
+    password: params.password,
+    dateParam: params.date,
+    request,
+    env: context.cloudflare.env,
+  });
 
   const events = await context.db
     .select({
@@ -53,6 +60,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     events,
     urlDate,
     timingPoints,
+    password,
   };
 }
 
@@ -63,28 +71,11 @@ export default function Page({ loaderData }: Route.ComponentProps) {
       <Center>
         <Stack>
           <Title order={1} py="xl" px="xl">
-            No data received{" "}
+            No data received for {" "}
             {loaderData.date
               ? DateTime.fromISO(loaderData.date).toFormat("yyyy-MM-dd")
-              : undefined}
+              : undefined}{" "}yet
           </Title>
-          <DatePicker
-            onChange={(value) => {
-              if (value) {
-                navigate(
-                  `/${DateTime.fromJSDate(value).toFormat("yyyy-MM-dd")}`
-                );
-              }
-            }}
-            maxDate={DateTime.now()
-              .set({ hour: 23, minute: 59, second: 59, millisecond: 999 })
-              .toJSDate()}
-            value={
-              loaderData.date
-                ? DateTime.fromISO(loaderData.date).toJSDate()
-                : undefined
-            }
-          />
         </Stack>
       </Center>
     );
@@ -105,6 +96,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
         }))}
       timingPoints={loaderData.timingPoints}
       urlDate={loaderData.urlDate}
+      password={loaderData.password}
     />
   );
 }

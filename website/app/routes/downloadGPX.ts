@@ -1,13 +1,17 @@
 import { and, asc, gte, lte } from "drizzle-orm";
 import { DateTime } from "luxon";
+import { ensurePasswordAccess } from "~/passwordAccess.server";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/downloadGPX";
 
-export async function loader({ context, params }: Route.LoaderArgs) {
-  let refDate = params.date
-    ? DateTime.fromFormat(params.date, "yyyy-MM-dd", { zone: "utc" })
-    : DateTime.now().toUTC();
-  refDate = refDate.set({ hour: 0, minute: 0, second: 0, millisecond: 0 });
+export async function loader({ context, params, request }: Route.LoaderArgs) {
+  const { refDate, urlDate } = await ensurePasswordAccess({
+    db: context.db,
+    password: params.password,
+    dateParam: params.date,
+    request,
+    env: context.cloudflare.env,
+  });
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -87,7 +91,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
   headers.set("Content-Type", "application/gpx+xml");
   headers.set(
     "Content-Disposition",
-    `attachment; filename="${params.date}-tracker-export.gpx"`
+    `attachment; filename="${urlDate}-tracker-export.gpx"`
   );
   headers.set("Cache-Control", "no-cache");
   return new Response(stream, {

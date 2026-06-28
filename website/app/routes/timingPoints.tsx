@@ -10,6 +10,7 @@ import {
 import { and, asc, between, eq, or, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
+import { ensurePasswordAccess } from "~/passwordAccess.server";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/timingPoints";
 
@@ -18,11 +19,13 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context, request, params }: Route.LoaderArgs) {
-  let refDate = params.date
-    ? DateTime.fromFormat(params.date, "yyyy-MM-dd", { zone: "utc" })
-    : DateTime.now().toUTC();
-  refDate = refDate.set({ hour: 0, minute: 0, second: 0, millisecond: 0 });
-  const urlDate = refDate.toFormat("yyyy-MM-dd");
+  const { refDate, urlDate, password } = await ensurePasswordAccess({
+    db: context.db,
+    password: params.password,
+    dateParam: params.date,
+    request,
+    env: context.cloudflare.env,
+  });
 
   const startOfDay = refDate.startOf("day").toMillis();
   const endOfDay = refDate.endOf("day").toMillis();
@@ -188,6 +191,7 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
       longitude: number;
     }[],
     date: urlDate,
+    password,
   };
 }
 
@@ -198,20 +202,20 @@ export default function Page({ loaderData }: Route.ComponentProps) {
         <Button
           leftSection={<IconChevronLeft />}
           component={Link}
-          to={`/${loaderData.date}`}
+          to={`/${loaderData.password}/${loaderData.date}`}
         >
           Back to Map
         </Button>
         <Button
           leftSection={<IconList />}
-          href={`/${loaderData.date}/table`}
+          href={`/${loaderData.password}/${loaderData.date}/table`}
           component="a"
         >
           View Full History
         </Button>
         <Button
           leftSection={<IconHistory />}
-          href={`/${loaderData.date}/timingsHistoric`}
+          href={`/${loaderData.password}/${loaderData.date}/timingsHistoric`}
           component="a"
         >
           Compare to Other Dates

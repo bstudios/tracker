@@ -25,3 +25,4 @@ node_modules
 
 website/.react-router
 website/build
+*.tsbuildinfo

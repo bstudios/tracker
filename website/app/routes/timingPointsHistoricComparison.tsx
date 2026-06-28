@@ -3,6 +3,7 @@ import { IconChevronLeft } from "@tabler/icons-react";
 import { asc, eq, or, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
+import { ensurePasswordAccess } from "~/passwordAccess.server";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/timingPointsHistoricComparison";
 
@@ -11,11 +12,13 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context, request, params }: Route.LoaderArgs) {
-  let refDate = params.date
-    ? DateTime.fromFormat(params.date, "yyyy-MM-dd", { zone: "utc" })
-    : DateTime.now().toUTC();
-  refDate = refDate.set({ hour: 0, minute: 0, second: 0, millisecond: 0 });
-  const urlDate = refDate.toFormat("yyyy-MM-dd");
+  const { urlDate, password } = await ensurePasswordAccess({
+    db: context.db,
+    password: params.password,
+    dateParam: params.date,
+    request,
+    env: context.cloudflare.env,
+  });
 
   // Select timing points that are applicable on the chosen date
   const selectedTimingPoints = context.db.$with("selected_timing_points").as(
@@ -249,6 +252,7 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
       >;
     }[],
     date: urlDate,
+    password,
   };
 }
 
@@ -259,7 +263,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
         <Button
           leftSection={<IconChevronLeft />}
           component={Link}
-          to={`/${loaderData.date}`}
+          to={`/${loaderData.password}/${loaderData.date}`}
         >
           Back to Map
         </Button>

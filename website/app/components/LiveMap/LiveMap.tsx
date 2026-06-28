@@ -9,6 +9,7 @@ export interface MapProps {
     timestamp: number;
   }[];
   urlDate: string;
+  password: string;
   timingPoints: {
     name: string;
     latitude: number;

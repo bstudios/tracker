@@ -6,16 +6,23 @@ import {
 } from "@react-router/dev/routes";
 
 export default [
-  route("generateDummyDataLocally", "./routes/generateDummy.tsx"),
+  index("./routes/login.tsx"),
   route("upload-traccar.json", "./routes/api/traccarUpload.ts"),
   route("upload-flespi.json", "./routes/api/flespiUpload.ts"),
   route("upload.json", "./routes/api/appUpload.ts"),
-  ...prefix(":date?", [
+  ...prefix(":password", [
+    index("./routes/passwordDateSelector.tsx"),
+  ]),
+  ...prefix(":password/:date", [
     route("table/:cursor?", "./routes/table.tsx"),
     route("timings", "./routes/timingPoints.tsx"),
     route("timingsHistoric", "./routes/timingPointsHistoricComparison.tsx"),
     route("export.gpx", "./routes/downloadGPX.ts"),
     index("./routes/map.tsx"),
   ]),
-  route("admin/:date?/timingPointEditor", "./routes/admin/timingPointEditor.tsx"),
+  ...prefix("admin", [
+    route("passwords", "./routes/admin/passwords.tsx"),
+    route(":date?/timingPointEditor", "./routes/admin/timingPointEditor.tsx"),
+    route("generateDummyDataLocally", "./routes/generateDummy.tsx"),
+  ]),
 ] satisfies RouteConfig;

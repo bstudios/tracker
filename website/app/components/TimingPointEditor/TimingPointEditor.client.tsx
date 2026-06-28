@@ -45,9 +45,11 @@ const tablerMapIcon = (children: React.ReactNode) =>
 function NewPointCreator({
   newPoint,
   setNewPoint,
+  editorPath,
 }: {
   newPoint: LatLng | null;
   setNewPoint: (point: LatLng | null) => void;
+  editorPath: string;
 }) {
   const fetcher = useFetcher();
 
@@ -71,7 +73,7 @@ function NewPointCreator({
       onClose={() => setNewPoint(null)}
       title="Create new Timing Point"
     >
-      <fetcher.Form method="post" action="/admin/timingPointEditor">
+      <fetcher.Form method="post" action={editorPath}>
         <TextInput
           label="Name"
           placeholder="Enter name for timing point"
@@ -132,7 +134,11 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
             }}
             attributionControl={false}
           >
-            <NewPointCreator newPoint={newPoint} setNewPoint={setNewPoint} />
+            <NewPointCreator
+              newPoint={newPoint}
+              setNewPoint={setNewPoint}
+              editorPath={props.editorPath}
+            />
             <TileLayer
               attribution='Map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -211,7 +217,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 <Group>
                   <Text>{point.name}</Text>
                   <Button onClick={() => setEditingPoint(point)}>Edit</Button>
-                  <fetcher.Form method="delete" action="/admin/timingPointEditor">
+                  <fetcher.Form method="delete" action={props.editorPath}>
                     <input type="hidden" name="id" value={point.id} />
                     <Button type="submit" color="red">
                       <IconTrash />
@@ -228,7 +234,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
             onClose={() => setEditingPoint(null)}
             title="Edit Timing Point"
           >
-            <fetcher.Form method="put" action="/admin/timingPointEditor">
+            <fetcher.Form method="put" action={props.editorPath}>
               <input type="hidden" name="id" value={editingPoint.id} />
               <TextInput
                 label="Name"

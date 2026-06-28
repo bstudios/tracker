@@ -2,6 +2,7 @@ import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import { createRequestHandler } from "react-router";
 import { drizzleLogger } from "../database/logger";
 import * as schema from "../database/schema.d";
+import { enforceCloudflareAccessOnAdminRoutes } from "./cloudflareAccessAdminMiddleware";
 
 declare module "react-router" {
   export interface AppLoadContext {
@@ -20,6 +21,14 @@ const requestHandler = createRequestHandler(
 
 export default {
   async fetch(request, env, ctx) {
+    const accessResponse = await enforceCloudflareAccessOnAdminRoutes(
+      request,
+      env
+    );
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const db = drizzle(env.DB, {
       schema,
       logger: drizzleLogger,

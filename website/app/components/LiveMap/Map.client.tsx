@@ -143,7 +143,7 @@ export const Map = (props: MapProps) => {
           <AttributionControl
             position="bottomright"
             prefix={`
-              <a href="/${props.urlDate}/timings">
+              <a href="/${props.password}/${props.urlDate}/timings">
                 Position History
               </a>&nbsp;|&nbsp;
               <a href="https://leafletjs.com" title="A JavaScript library for interactive maps" target="_blank" rel="noopener noreferrer">

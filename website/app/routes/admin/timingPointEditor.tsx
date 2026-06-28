@@ -9,6 +9,32 @@ export const meta: MetaFunction = () => {
   return [{ title: "Timing Point Editor" }];
 };
 
+const parseApplicableDatesInput = (rawApplicableDates: string) => {
+  const normalisedValue = rawApplicableDates.trim();
+  if (normalisedValue.length === 0) {
+    return [];
+  }
+
+  const parsedDates = normalisedValue
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  for (const date of parsedDates) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new Error("Applicable dates must use yyyy-MM-dd format.");
+    }
+    const parsedDate = DateTime.fromFormat(date, "yyyy-MM-dd", {
+      zone: "utc",
+    });
+    if (!parsedDate.isValid) {
+      throw new Error("Applicable dates must be valid calendar dates.");
+    }
+  }
+
+  return [...new Set(parsedDates)];
+};
+
 export async function loader({ context, params }: Route.LoaderArgs) {
   let refDate = params.date
     ? DateTime.fromFormat(params.date, "yyyy-MM-dd", { zone: "utc" })
@@ -38,6 +64,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     date: refDate.toISO(),
     events,
     urlDate,
+    editorPath: `/admin/${urlDate}/timingPointEditor`,
     timingPoints,
   };
 }
@@ -70,7 +97,7 @@ export async function action({ context, request }: Route.ActionArgs) {
     const radius = parseInt(formData.get("radius") as string);
     const order = parseInt(formData.get("order") as string);
     const applicableDatesRaw = formData.get("applicableDates") as string;
-    const applicableDates = applicableDatesRaw.split(",").filter(Boolean);
+    const applicableDates = parseApplicableDatesInput(applicableDatesRaw);
     await context.db
       .update(Schema.TimingPoints)
       .set({
@@ -87,6 +114,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 export default function Page({ loaderData }: Route.ComponentProps) {
   return (
     <TimingPointEditor
+      editorPath={loaderData.editorPath}
       timingPoints={loaderData.timingPoints}
       pins={loaderData.events
         .filter(

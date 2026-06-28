@@ -4,6 +4,7 @@ import { ClientOnly } from "remix-utils/client-only";
 import * as Schema from "~/database/schema.d";
 import { TimingPointEditor as TimingPointEditorClient } from "./TimingPointEditor.client";
 export interface TimingPointEditorProps {
+  editorPath: string;
   timingPoints: InferSelectModel<typeof Schema.TimingPoints>[];
   pins: {
     latitude: number;
