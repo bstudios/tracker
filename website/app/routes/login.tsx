@@ -1,4 +1,5 @@
 import {
+  Anchor,
   Button,
   Container,
   Stack,
@@ -6,7 +7,13 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { Form, redirect, useLoaderData, type MetaFunction } from "react-router";
+import {
+  Form,
+  Link,
+  redirect,
+  useLoaderData,
+  type MetaFunction,
+} from "react-router";
 import {
   findPasswordAccessWithRateLimit,
   parsePasswordInput,
@@ -88,6 +95,11 @@ export default function Page({ actionData }: Route.ComponentProps) {
             <Button type="submit">Open Tracker</Button>
           </Stack>
         </Form>
+        <Text size="xs" c="dimmed" ta="center">
+          <Anchor component={Link} to="/admin" c="dimmed">
+            Admin
+          </Anchor>
+        </Text>
       </Stack>
     </Container>
   );

@@ -21,6 +21,7 @@ export default [
     index("./routes/map.tsx"),
   ]),
   ...prefix("admin", [
+    index("./routes/admin/index.tsx"),
     route("passwords", "./routes/admin/passwords.tsx"),
     route(":date?/timingPointEditor", "./routes/admin/timingPointEditor.tsx"),
     route("generateDummyDataLocally", "./routes/generateDummy.tsx"),
