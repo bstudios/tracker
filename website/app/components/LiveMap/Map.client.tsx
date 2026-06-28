@@ -85,6 +85,49 @@ const ThisUserCurrentLocation = (props: { icon: DivIcon }) => {
   );
 };
 
+const PreventPagePinchZoom = () => {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    const preventDefault = (event: Event) => event.preventDefault();
+    const preventDefaultWhenPinching = (event: TouchEvent) => {
+      if (event.touches.length > 1) {
+        event.preventDefault();
+      }
+    };
+    const preventBrowserZoomOnTrackpadPinch = (event: WheelEvent) => {
+      if (event.ctrlKey) {
+        event.preventDefault();
+      }
+    };
+
+    container.addEventListener("gesturestart", preventDefault);
+    container.addEventListener("gesturechange", preventDefault);
+    container.addEventListener("gestureend", preventDefault);
+    container.addEventListener("touchstart", preventDefaultWhenPinching, {
+      passive: false,
+    });
+    container.addEventListener("touchmove", preventDefaultWhenPinching, {
+      passive: false,
+    });
+    container.addEventListener("wheel", preventBrowserZoomOnTrackpadPinch, {
+      passive: false,
+    });
+
+    return () => {
+      container.removeEventListener("gesturestart", preventDefault);
+      container.removeEventListener("gesturechange", preventDefault);
+      container.removeEventListener("gestureend", preventDefault);
+      container.removeEventListener("touchstart", preventDefaultWhenPinching);
+      container.removeEventListener("touchmove", preventDefaultWhenPinching);
+      container.removeEventListener("wheel", preventBrowserZoomOnTrackpadPinch);
+    };
+  }, [map]);
+
+  return null;
+};
+
 export const Map = (props: MapProps) => {
   const revalidator = useRevalidator();
 
@@ -127,7 +170,8 @@ export const Map = (props: MapProps) => {
         <MapContainer
           center={[highestTimestampPin.latitude, highestTimestampPin.longitude]}
           zoom={props.zoom}
-          scrollWheelZoom={false}
+          scrollWheelZoom={true}
+          touchZoom={true}
           style={{
             height: `${height}px`,
             width: `${width}px`,
@@ -136,6 +180,7 @@ export const Map = (props: MapProps) => {
           }}
           attributionControl={false}
         >
+          <PreventPagePinchZoom />
           <TileLayer
             attribution='Map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
