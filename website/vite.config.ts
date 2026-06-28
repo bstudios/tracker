@@ -6,8 +6,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [
     cloudflare({
-      viteEnvironment: { name: "ssr" },
-      experimental: { remoteBindings: true },
+      viteEnvironment: { name: "ssr" }
     }),
     reactRouter(),
     tsconfigPaths(),
