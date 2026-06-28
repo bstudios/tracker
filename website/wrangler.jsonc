@@ -4,30 +4,22 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "event-tracker-prod",
-      "database_id": "36028421-7297-4ee3-a6e2-39fe38bb2170",
+      "database_name": "tracker-prod",
+      "database_id": "3dfa76f7-8cc4-435e-8975-dc8b112f1b8f",
       "migrations_table": "migrations",
       "migrations_dir": "database/migrations",
-      "experimental_remote": false
+      "remote": true
     }
   ],
   "routes": [
     {
-      "pattern": "traccar-forward-event-tracker.jbithell.com",
-      "custom_domain": true
-    },
-    {
-      "pattern": "lbvcr24.bithell.com",
-      "custom_domain": true
-    },
-    {
-      "pattern": "lbvcr25.bithell.com",
+      "pattern": "tracker.bithell.studio",
       "custom_domain": true
     }
   ],
   "vars": {},
   "main": "./workers/app.ts",
-  "compatibility_date": "2025-04-05",
+  "compatibility_date": "2026-06-23",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./build/client/",
@@ -47,5 +39,6 @@
   },
   "version_metadata": {
     "binding": "CF_VERSION_METADATA"
-  }
+  },
+  "account_id": "b02c7bb80b108e24cb7cd05f60e25dbd",
 }

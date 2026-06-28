@@ -9,6 +9,6 @@ export default {
     return ["/", "/about", "/contact"];
   },*/
   future: {
-    unstable_viteEnvironmentApi: true,
+    v8_viteEnvironmentApi: true,
   },
 } satisfies Config;
