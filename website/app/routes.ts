@@ -23,6 +23,7 @@ export default [
   ...prefix("admin", [
     index("./routes/admin/index.tsx"),
     route("passwords", "./routes/admin/passwords.tsx"),
+    route("data", "./routes/admin/data.tsx"),
     route(":date?/timingPointEditor", "./routes/admin/timingPointEditor.tsx"),
     route("generateDummyDataLocally", "./routes/generateDummy.tsx"),
   ]),

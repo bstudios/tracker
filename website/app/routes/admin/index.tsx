@@ -21,7 +21,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch') DESC`
     );
 
-  return { availableDates: availableDateRows.map((row) => row.date) };
+  return { availableDateRows };
 }
 
 export default function Page({ loaderData }: Route.ComponentProps) {
@@ -32,23 +32,26 @@ export default function Page({ loaderData }: Route.ComponentProps) {
         <Button component={Link} to="/admin/passwords">
           Password administration
         </Button>
+        <Button component={Link} to="/admin/data">
+          Data administration
+        </Button>
       </Stack>
 
       <Title order={2} mt="xl" mb="sm">
         Timing point editor by date
       </Title>
-      {loaderData.availableDates.length === 0 ? (
+      {loaderData.availableDateRows.length === 0 ? (
         <Text c="dimmed">No data available yet</Text>
       ) : (
         <Stack>
-          {loaderData.availableDates.map((date) => (
+          {loaderData.availableDateRows.map((row) => (
             <Button
-              key={date}
+              key={row.date}
               component={Link}
-              to={`/admin/${date}/timingPointEditor`}
+              to={`/admin/${row.date}/timingPointEditor`}
               variant="light"
             >
-              {date}
+              {row.date}
             </Button>
           ))}
         </Stack>
