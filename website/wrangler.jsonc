@@ -1,6 +1,6 @@
 {
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tracker",
-  "workers_dev": false,
   "d1_databases": [
     {
       "binding": "DB",
@@ -27,18 +27,24 @@
   },
   "upload_source_maps": true,
   "observability": {
-    "enabled": true,
-    "head_sampling_rate": 1,
     "logs": {
-      "invocation_logs": true
-    }
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+    },
   },
   "preview_urls": false,
-  "triggers": {
-    "crons": ["30 2 * * *"] // every day at 2:30 AM UTC
-  },
+  "workers_dev": false,
   "version_metadata": {
     "binding": "CF_VERSION_METADATA"
   },
   "account_id": "b02c7bb80b108e24cb7cd05f60e25dbd",
+  "keep_vars": true,
+  
 }

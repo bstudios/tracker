@@ -21,7 +21,7 @@ The website is a simple React Router 7 App in the website/ folder.
 The device uses H02 protocol (port 5013)
 You can SMS the device using https://portal.1nce.com/portal/customer/dashboard
 
-To set a new address send a message saying `IP,10.10.10.10,5013` (replacing 10.10.10.10 with the IP of the traccar/flespi server)
+To set a new address send a message saying `IP,10.10.10.10,5013` (replacing 10.10.10.10 with the IP of the traccar/flespi server) 
 
 Default address is `IP,27.aika168.com,8185`
 

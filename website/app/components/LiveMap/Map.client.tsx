@@ -132,6 +132,7 @@ export const Map = (props: MapProps) => {
             height: `${height}px`,
             width: `${width}px`,
             zIndex: 0,
+            touchAction: "none",
           }}
           attributionControl={false}
         >
