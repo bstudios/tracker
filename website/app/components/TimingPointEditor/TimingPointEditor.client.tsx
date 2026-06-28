@@ -71,7 +71,7 @@ function NewPointCreator({
       onClose={() => setNewPoint(null)}
       title="Create new Timing Point"
     >
-      <fetcher.Form method="post" action="/timingPointEditor">
+      <fetcher.Form method="post" action="/admin/timingPointEditor">
         <TextInput
           label="Name"
           placeholder="Enter name for timing point"
@@ -211,7 +211,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 <Group>
                   <Text>{point.name}</Text>
                   <Button onClick={() => setEditingPoint(point)}>Edit</Button>
-                  <fetcher.Form method="delete" action="/timingPointEditor">
+                  <fetcher.Form method="delete" action="/admin/timingPointEditor">
                     <input type="hidden" name="id" value={point.id} />
                     <Button type="submit" color="red">
                       <IconTrash />
@@ -228,7 +228,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
             onClose={() => setEditingPoint(null)}
             title="Edit Timing Point"
           >
-            <fetcher.Form method="put" action="/timingPointEditor">
+            <fetcher.Form method="put" action="/admin/timingPointEditor">
               <input type="hidden" name="id" value={editingPoint.id} />
               <TextInput
                 label="Name"
