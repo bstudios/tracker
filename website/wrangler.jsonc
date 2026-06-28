@@ -8,18 +8,18 @@
       "database_id": "3dfa76f7-8cc4-435e-8975-dc8b112f1b8f",
       "migrations_table": "migrations",
       "migrations_dir": "database/migrations",
-      "remote": false
-    }
+      "remote": false,
+    },
   ],
   "routes": [
     {
       "pattern": "tracker.bithell.studio",
-      "custom_domain": true
-    }
+      "custom_domain": true,
+    },
   ],
   "vars": {
-    "CLOUDFLARE_ACCESS_POLICY_AUD": "",
-    "CLOUDFLARE_ACCESS_TEAM_DOMAIN": ""
+    "CLOUDFLARE_ACCESS_POLICY_AUD": "3bf1c92ea8fe760b6ad94c57b40dcc84dbef8652050e52103d360517ca474372",
+    "CLOUDFLARE_ACCESS_TEAM_DOMAIN": "bstudios.cloudflareaccess.com",
   },
   "ratelimits": [
     {
@@ -27,16 +27,16 @@
       "namespace_id": "1001",
       "simple": {
         "limit": 10,
-        "period": 60
-      }
-    }
+        "period": 60,
+      },
+    },
   ],
   "main": "./workers/app.ts",
   "compatibility_date": "2026-06-23",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./build/client/",
-    "run_worker_first": false
+    "run_worker_first": false,
   },
   "upload_source_maps": true,
   "observability": {
@@ -55,9 +55,8 @@
   "preview_urls": false,
   "workers_dev": false,
   "version_metadata": {
-    "binding": "CF_VERSION_METADATA"
+    "binding": "CF_VERSION_METADATA",
   },
   "account_id": "b02c7bb80b108e24cb7cd05f60e25dbd",
   "keep_vars": true,
-  
 }
