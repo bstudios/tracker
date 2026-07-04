@@ -1,3 +1,4 @@
+import { getDb } from "~/routeContext";
 import { data, redirect } from "react-router";
 import { z as zod } from "zod";
 import { Events } from "~/database/schema/Events";
@@ -38,7 +39,7 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
   const validated = await validator.safeParseAsync(payload);
   if (!validated.success) return data({ message: validated.error }, 400);
 
-  const insertTimeSeries = await context.db.insert(Events).values({
+  const insertTimeSeries = await getDb(context).insert(Events).values({
     timestamp: validated.data.location.timestamp,
     data: {
       location: {

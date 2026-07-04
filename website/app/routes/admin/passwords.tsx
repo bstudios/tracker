@@ -1,3 +1,4 @@
+import { getDb } from "~/routeContext";
 import {
   Button,
   Container,
@@ -9,7 +10,10 @@ import {
 } from "@mantine/core";
 import { eq, sql } from "drizzle-orm";
 import { Form, type MetaFunction } from "react-router";
-import { parseAllowedDatesInput, parsePasswordInput } from "~/passwordAccess.server";
+import {
+  parseAllowedDatesInput,
+  parsePasswordInput,
+} from "~/passwordAccess.server";
 import { AccessPasswords } from "~/database/schema/AccessPasswords";
 import type { Route } from "./+types/passwords";
 
@@ -18,9 +22,9 @@ export const meta: MetaFunction = () => {
 };
 
 const ensurePasswordIsUnique = async (
-  db: Route.ActionArgs["context"]["db"],
+  db: ReturnType<typeof getDb>,
   password: string,
-  excludeId?: number
+  excludeId?: number,
 ) => {
   const [existingPassword] = await db
     .select({ id: AccessPasswords.id })
@@ -28,7 +32,7 @@ const ensurePasswordIsUnique = async (
     .where(
       excludeId === undefined
         ? sql`lower(${AccessPasswords.password}) = ${password}`
-        : sql`lower(${AccessPasswords.password}) = ${password} AND ${AccessPasswords.id} != ${excludeId}`
+        : sql`lower(${AccessPasswords.password}) = ${password} AND ${AccessPasswords.id} != ${excludeId}`,
     )
     .limit(1);
 
@@ -38,7 +42,7 @@ const ensurePasswordIsUnique = async (
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const passwords = await context.db
+  const passwords = await getDb(context)
     .select({
       id: AccessPasswords.id,
       password: AccessPasswords.password,
@@ -55,26 +59,28 @@ export async function action({ context, request }: Route.ActionArgs) {
 
   if (intent === "create") {
     const password = parsePasswordInput(
-      (formData.get("password") as string | null) ?? ""
+      (formData.get("password") as string | null) ?? "",
     );
-    await ensurePasswordIsUnique(context.db, password);
+    await ensurePasswordIsUnique(getDb(context), password);
     const allowedDates = parseAllowedDatesInput(
-      (formData.get("allowedDates") as string | null) ?? ""
+      (formData.get("allowedDates") as string | null) ?? "",
     );
-    await context.db.insert(AccessPasswords).values({ password, allowedDates });
+    await getDb(context)
+      .insert(AccessPasswords)
+      .values({ password, allowedDates });
     return { success: true };
   }
 
   if (intent === "update") {
     const id = Number(formData.get("id"));
     const password = parsePasswordInput(
-      (formData.get("password") as string | null) ?? ""
+      (formData.get("password") as string | null) ?? "",
     );
-    await ensurePasswordIsUnique(context.db, password, id);
+    await ensurePasswordIsUnique(getDb(context), password, id);
     const allowedDates = parseAllowedDatesInput(
-      (formData.get("allowedDates") as string | null) ?? ""
+      (formData.get("allowedDates") as string | null) ?? "",
     );
-    await context.db
+    await getDb(context)
       .update(AccessPasswords)
       .set({ password, allowedDates })
       .where(eq(AccessPasswords.id, id));
@@ -83,7 +89,9 @@ export async function action({ context, request }: Route.ActionArgs) {
 
   if (intent === "delete") {
     const id = Number(formData.get("id"));
-    await context.db.delete(AccessPasswords).where(eq(AccessPasswords.id, id));
+    await getDb(context)
+      .delete(AccessPasswords)
+      .where(eq(AccessPasswords.id, id));
     return { success: true };
   }
 
@@ -98,7 +106,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
         Use one date (yyyy-MM-dd) or leave blank for unrestricted access.
       </Text>
       <Text c="dimmed" mb="md">
-        Passwords use only letters, numbers, and hyphens, and are case-insensitive.
+        Passwords use only letters, numbers, and hyphens, and are
+        case-insensitive.
       </Text>
 
       <Form method="post">
@@ -150,7 +159,9 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                   form={`password-row-${entry.id}`}
                   name="allowedDates"
                   defaultValue={
-                    entry.allowedDates === null ? "" : entry.allowedDates[0] ?? ""
+                    entry.allowedDates === null
+                      ? ""
+                      : (entry.allowedDates[0] ?? "")
                   }
                 />
               </Table.Td>

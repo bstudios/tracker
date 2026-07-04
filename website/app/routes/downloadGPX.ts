@@ -1,3 +1,4 @@
+import { getDb } from "~/routeContext";
 import { and, asc, gte, lte } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { ensurePasswordAccess } from "~/passwordAccess.server";
@@ -32,7 +33,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 
       try {
         do {
-          const databaseResult = await context.db
+          const databaseResult = await getDb(context)
             .select({
               timestamp: Events.timestamp,
               data: Events.data,

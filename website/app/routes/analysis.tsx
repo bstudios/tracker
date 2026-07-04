@@ -1,35 +1,23 @@
+import { getDb } from "~/routeContext";
 import {
   Button,
   Card,
   Center,
   Container,
   Group,
-  MantineProvider,
   SimpleGrid,
   Stack,
   Text,
-  ThemeIcon,
   Title,
   Table,
 } from "@mantine/core";
 import { LineChart } from "@mantine/charts";
 import { and, asc, eq, gte, lte, or, sql } from "drizzle-orm";
-import { divIcon } from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { DateTime } from "luxon";
-import type { ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { Link, type MetaFunction } from "react-router";
-import {
-  MapContainer,
-  Marker,
-  Polyline,
-  Popup,
-  TileLayer,
-} from "react-leaflet";
+import { AnalysisMap } from "~/components/AnalysisMap/AnalysisMap";
 import { ensurePasswordAccess } from "~/passwordAccess.server";
 import * as Schema from "~/database/schema.d";
-import { theme } from "~/root";
 import type { Route } from "./+types/analysis";
 
 export const meta: MetaFunction = () => {
@@ -47,7 +35,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     request,
   });
 
-  const events = await context.db
+  const events = await getDb(context)
     .select({
       id: Schema.Events.id,
       timestamp: Schema.Events.timestamp,
@@ -122,68 +110,74 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   const startOfDay = refDate.startOf("day").toMillis();
   const endOfDay = refDate.endOf("day").toMillis();
 
-  const selectedTimingPoints = context.db.$with("selected_timing_points").as(
-    context.db
-      .select({
-        id: Schema.TimingPoints.id,
-        order: Schema.TimingPoints.order,
-        name: Schema.TimingPoints.name,
-        icon: Schema.TimingPoints.icon,
-        googleLink: Schema.TimingPoints.googleLink,
-        latitude: Schema.TimingPoints.latitude,
-        longitude: Schema.TimingPoints.longitude,
-        radius: Schema.TimingPoints.radius,
-      })
-      .from(Schema.TimingPoints)
-      .where(
-        sql`EXISTS (
+  const selectedTimingPoints = getDb(context)
+    .$with("selected_timing_points")
+    .as(
+      getDb(context)
+        .select({
+          id: Schema.TimingPoints.id,
+          order: Schema.TimingPoints.order,
+          name: Schema.TimingPoints.name,
+          icon: Schema.TimingPoints.icon,
+          googleLink: Schema.TimingPoints.googleLink,
+          latitude: Schema.TimingPoints.latitude,
+          longitude: Schema.TimingPoints.longitude,
+          radius: Schema.TimingPoints.radius,
+        })
+        .from(Schema.TimingPoints)
+        .where(
+          sql`EXISTS (
           SELECT 1 FROM json_each(${Schema.TimingPoints.applicableDates})
           WHERE value = ${urlDate}
         )`,
-      ),
-  );
-
-  const dailyEvents = context.db.$with("daily_events").as(
-    context.db
-      .select({
-        id: Schema.Events.id,
-        timestamp: Schema.Events.timestamp,
-        event_latitude:
-          sql<number>`json_extract(data, '$.location.latitude')`.as(
-            "event_latitude",
-          ),
-        event_longitude:
-          sql<number>`json_extract(data, '$.location.longitude')`.as(
-            "event_longitude",
-          ),
-      })
-      .from(Schema.Events)
-      .where(
-        and(
-          gte(Schema.Events.timestamp, startOfDay),
-          lte(Schema.Events.timestamp, endOfDay),
         ),
-      ),
-  );
+    );
 
-  const matchingTimingEvents = context.db.$with("matching_timing_events").as(
-    context.db
-      .select({
-        timing_point_id: Schema.TimingPoints.id,
-        order: Schema.TimingPoints.order,
-        name: Schema.TimingPoints.name,
-        event_id: dailyEvents.id,
-        timestamp: dailyEvents.timestamp,
-      })
-      .from(Schema.TimingPoints)
-      .innerJoin(dailyEvents, sql`1`)
-      .where(
-        and(
-          sql`EXISTS (
+  const dailyEvents = getDb(context)
+    .$with("daily_events")
+    .as(
+      getDb(context)
+        .select({
+          id: Schema.Events.id,
+          timestamp: Schema.Events.timestamp,
+          event_latitude:
+            sql<number>`json_extract(data, '$.location.latitude')`.as(
+              "event_latitude",
+            ),
+          event_longitude:
+            sql<number>`json_extract(data, '$.location.longitude')`.as(
+              "event_longitude",
+            ),
+        })
+        .from(Schema.Events)
+        .where(
+          and(
+            gte(Schema.Events.timestamp, startOfDay),
+            lte(Schema.Events.timestamp, endOfDay),
+          ),
+        ),
+    );
+
+  const matchingTimingEvents = getDb(context)
+    .$with("matching_timing_events")
+    .as(
+      getDb(context)
+        .select({
+          timing_point_id: Schema.TimingPoints.id,
+          order: Schema.TimingPoints.order,
+          name: Schema.TimingPoints.name,
+          event_id: dailyEvents.id,
+          timestamp: dailyEvents.timestamp,
+        })
+        .from(Schema.TimingPoints)
+        .innerJoin(dailyEvents, sql`1`)
+        .where(
+          and(
+            sql`EXISTS (
             SELECT 1 FROM json_each(${Schema.TimingPoints.applicableDates})
             WHERE value = ${urlDate}
           )`,
-          sql`(${6371000 * 2} * ASIN(MIN(1.0, SQRT(
+            sql`(${6371000 * 2} * ASIN(MIN(1.0, SQRT(
             SIN((${dailyEvents.event_latitude} - ${Schema.TimingPoints.latitude}) * 0.00872664626) *
             SIN((${dailyEvents.event_latitude} - ${Schema.TimingPoints.latitude}) * 0.00872664626) +
             COS(${Schema.TimingPoints.latitude} * 0.01745329252) *
@@ -191,38 +185,40 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
             SIN((${dailyEvents.event_longitude} - ${Schema.TimingPoints.longitude}) * 0.00872664626) *
             SIN((${dailyEvents.event_longitude} - ${Schema.TimingPoints.longitude}) * 0.00872664626)
           )))) <= ${Schema.TimingPoints.radius}`,
+          ),
         ),
-      ),
-  );
+    );
 
-  const rankedTimingEvents = context.db.$with("ranked_timing_events").as(
-    context.db
-      .select({
-        timing_point_id: matchingTimingEvents.timing_point_id,
-        order: matchingTimingEvents.order,
-        name: matchingTimingEvents.name,
-        event_id: matchingTimingEvents.event_id,
-        timestamp: matchingTimingEvents.timestamp,
-        row_number_asc:
-          sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingTimingEvents.timing_point_id} ORDER BY ${matchingTimingEvents.timestamp} ASC)`.as(
-            "row_number_asc",
-          ),
-        row_number_desc:
-          sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingTimingEvents.timing_point_id} ORDER BY ${matchingTimingEvents.timestamp} DESC)`.as(
-            "row_number_desc",
-          ),
-        event_count:
-          sql<number>`COUNT(*) OVER(PARTITION BY ${matchingTimingEvents.timing_point_id})`.as(
-            "event_count",
-          ),
-      })
-      .from(matchingTimingEvents),
-  );
+  const rankedTimingEvents = getDb(context)
+    .$with("ranked_timing_events")
+    .as(
+      getDb(context)
+        .select({
+          timing_point_id: matchingTimingEvents.timing_point_id,
+          order: matchingTimingEvents.order,
+          name: matchingTimingEvents.name,
+          event_id: matchingTimingEvents.event_id,
+          timestamp: matchingTimingEvents.timestamp,
+          row_number_asc:
+            sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingTimingEvents.timing_point_id} ORDER BY ${matchingTimingEvents.timestamp} ASC)`.as(
+              "row_number_asc",
+            ),
+          row_number_desc:
+            sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingTimingEvents.timing_point_id} ORDER BY ${matchingTimingEvents.timestamp} DESC)`.as(
+              "row_number_desc",
+            ),
+          event_count:
+            sql<number>`COUNT(*) OVER(PARTITION BY ${matchingTimingEvents.timing_point_id})`.as(
+              "event_count",
+            ),
+        })
+        .from(matchingTimingEvents),
+    );
 
-  const aggregatedTimingEvents = context.db
+  const aggregatedTimingEvents = getDb(context)
     .$with("aggregated_timing_events")
     .as(
-      context.db
+      getDb(context)
         .select({
           timing_point_id: rankedTimingEvents.timing_point_id,
           events:
@@ -240,7 +236,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
         .groupBy(rankedTimingEvents.timing_point_id),
     );
 
-  const timingPoints = await context.db
+  const timingPoints = await getDb(context)
     .with(
       selectedTimingPoints,
       dailyEvents,
@@ -320,31 +316,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   };
 }
 
-const mapIcon = (children: ReactNode) =>
-  divIcon({
-    html: renderToStaticMarkup(
-      <MantineProvider theme={theme}>{children}</MantineProvider>,
-    ),
-    iconSize: [20, 20],
-    className: "myDivIcon",
-  });
-
-const speedColor = (speedKph: number) => {
-  if (speedKph < 1) return "#7c3aed";
-  if (speedKph < 20) return "#2563eb";
-  if (speedKph < 50) return "#16a34a";
-  if (speedKph < 80) return "#f59e0b";
-  return "#dc2626";
-};
-
 export default function Page({ loaderData }: Route.ComponentProps) {
   const backToMapHref = `/${loaderData.password}/${loaderData.urlDate}`;
-  const routeCenter = loaderData.route.points[0]
-    ? ([
-        loaderData.route.points[0].latitude,
-        loaderData.route.points[0].longitude,
-      ] as [number, number])
-    : ([0, 0] as [number, number]);
 
   return (
     <Container fluid p="md">
@@ -450,57 +423,10 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               </Stack>
             </Center>
           ) : (
-            <div style={{ height: 420, width: "100%" }}>
-              <MapContainer
-                center={routeCenter}
-                zoom={13}
-                scrollWheelZoom={false}
-                touchZoom={true}
-                style={{ height: 420, width: "100%", zIndex: 0 }}
-                attributionControl={false}
-              >
-                <TileLayer
-                  attribution='Map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                {loaderData.route.segments.map((segment) => (
-                  <Polyline
-                    key={segment.id}
-                    positions={segment.positions}
-                    pathOptions={{
-                      color: speedColor(segment.speedKph),
-                      weight: 5,
-                    }}
-                  />
-                ))}
-                {loaderData.route.points.map((point, index) => (
-                  <Marker
-                    key={`${point.id}-${index}`}
-                    position={[point.latitude, point.longitude]}
-                    icon={mapIcon(
-                      <ThemeIcon radius="xl" size="sm" color="pink">
-                        {index === 0
-                          ? "S"
-                          : index === loaderData.route.points.length - 1
-                            ? "F"
-                            : "•"}
-                      </ThemeIcon>,
-                    )}
-                  >
-                    <Popup>
-                      <Text>
-                        {DateTime.fromSeconds(point.timestamp / 1000, {
-                          zone: "Europe/London",
-                        }).toLocaleString(DateTime.DATETIME_MED)}
-                      </Text>
-                      <Text size="sm">
-                        {(point.speed * 3.6).toFixed(1)} km/h
-                      </Text>
-                    </Popup>
-                  </Marker>
-                ))}
-              </MapContainer>
-            </div>
+            <AnalysisMap
+              points={loaderData.route.points}
+              segments={loaderData.route.segments}
+            />
           )}
         </Card>
 

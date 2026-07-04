@@ -110,7 +110,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     <Container className={classes.root}>
       <Title className={classes.title}>{message}</Title>
       <Text c="dimmed" size="lg" ta="center" className={classes.details}>
-        {process.env.NODE_ENV !== "production" ? stack : details}
+        {import.meta.env.DEV ? stack : details}
       </Text>
       <Group justify="center">
         <Link reloadDocument to="/">

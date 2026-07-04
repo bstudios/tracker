@@ -1,11 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "include": [
-    "vite.config.ts",
-    "database/**/*",
-    "workers/**/*",
-    "worker-configuration.d.ts"
-  ],
+  "include": ["vite.config.ts", "database/**/*"],
   "compilerOptions": {
     "composite": true,
     "strict": true,

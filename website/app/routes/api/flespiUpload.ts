@@ -1,9 +1,10 @@
+import { getDb } from "~/routeContext";
 import { data, redirect } from "react-router";
 import { z as zod } from "zod";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/flespiUpload";
 
-const rawMessageSchema = zod.record(zod.unknown());
+const rawMessageSchema = zod.record(zod.string(), zod.unknown());
 
 const normalizedMessageSchema = zod.object({
   timestamp: zod.coerce.number().positive(),
@@ -178,7 +179,7 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
 
   for (let i = 0; i < eventValues.length; i += INSERT_CHUNK_SIZE) {
     const chunk = eventValues.slice(i, i + INSERT_CHUNK_SIZE);
-    const insertTimeSeries = await context.db.insert(Events).values(chunk);
+    const insertTimeSeries = await getDb(context).insert(Events).values(chunk);
     if (insertTimeSeries.error) {
       return data(
         {

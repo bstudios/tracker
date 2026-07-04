@@ -1,3 +1,4 @@
+import { getDb } from "~/routeContext";
 import { Button, Container, Group, Table, Text, Title } from "@mantine/core";
 import {
   IconBrandApple,
@@ -26,7 +27,7 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
     request,
   });
 
-  const events = await context.db
+  const events = await getDb(context)
     .select({
       timestamp: Events.timestamp,
       data: Events.data,
@@ -43,7 +44,7 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
     )
     .limit(pageLength);
 
-  const count = await context.db
+  const count = await getDb(context)
     .select({ count: sql<number>`count(*)` })
     .from(Events)
     .where(

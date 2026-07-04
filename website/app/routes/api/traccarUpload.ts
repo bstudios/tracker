@@ -1,3 +1,4 @@
+import { getDb } from "~/routeContext";
 import { data } from "react-router";
 import { z as zod } from "zod";
 import { Events } from "~/database/schema/Events";
@@ -35,7 +36,7 @@ export const loader = async ({ context, request }: Route.LoaderArgs) => {
     Object.fromEntries(url.searchParams)
   );
   if (parsedRequestParameters.success) {
-    const insertTimeSeries = await context.db.insert(Events).values({
+    const insertTimeSeries = await getDb(context).insert(Events).values({
       timestamp: parsedRequestParameters.data.fixTime,
       data: {
         location: {

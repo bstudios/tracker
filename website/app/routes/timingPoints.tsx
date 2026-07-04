@@ -1,3 +1,4 @@
+import { getDb } from "~/routeContext";
 import { Anchor, Button, Container, Group, Table, Title } from "@mantine/core";
 import {
   IconChevronLeft,
@@ -29,8 +30,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
   const endOfDay = refDate.endOf("day").toMillis();
 
   // All timing points applicable on the chosen date
-  const selectedTimingPoints = context.db.$with("selected_timing_points").as(
-    context.db
+  const selectedTimingPoints = getDb(context).$with("selected_timing_points").as(
+    getDb(context)
       .select({
         id: Schema.TimingPoints.id,
         order: Schema.TimingPoints.order,
@@ -50,8 +51,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
   );
 
   // Get all events for the day
-  const dailyEvents = context.db.$with("daily_events").as(
-    context.db
+  const dailyEvents = getDb(context).$with("daily_events").as(
+    getDb(context)
       .select({
         id: Schema.Events.id,
         timestamp: Schema.Events.timestamp,
@@ -69,8 +70,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
   );
 
   // Get all events that are within the radius of the timing points that are applicable for the day
-  const matchingEvents = context.db.$with("matching_events").as(
-    context.db
+  const matchingEvents = getDb(context).$with("matching_events").as(
+    getDb(context)
       .select({
         timing_point_id: Schema.TimingPoints.id,
         order: Schema.TimingPoints.order,
@@ -106,8 +107,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
       ),
   );
 
-  const rankedEvents = context.db.$with("ranked_events").as(
-    context.db
+  const rankedEvents = getDb(context).$with("ranked_events").as(
+    getDb(context)
       .select({
         timing_point_id: matchingEvents.timing_point_id,
         order: matchingEvents.order,
@@ -130,8 +131,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
   );
 
   // Aggregate events per timing point (arrival/departure/passage only)
-  const aggregatedEvents = context.db.$with("aggregated_events").as(
-    context.db
+  const aggregatedEvents = getDb(context).$with("aggregated_events").as(
+    getDb(context)
       .select({
         timing_point_id: rankedEvents.timing_point_id,
         events:
@@ -150,7 +151,7 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
   );
 
   // Return all applicable timing points; include empty events where none matched
-  const timingPointsWithEvents = await context.db
+  const timingPointsWithEvents = await getDb(context)
     .with(
       selectedTimingPoints,
       dailyEvents,

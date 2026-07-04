@@ -1,3 +1,4 @@
+import { getDb } from "~/routeContext";
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { type MetaFunction } from "react-router";
@@ -42,7 +43,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
   refDate = refDate.set({ hour: 0, minute: 0, second: 0, millisecond: 0 });
   const urlDate = refDate.toFormat("yyyy-MM-dd");
 
-  const events = await context.db
+  const events = await getDb(context)
     .select({
       timestamp: Schema.Events.timestamp,
       data: Schema.Events.data,
@@ -55,7 +56,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
         lte(Schema.Events.timestamp, refDate.toMillis() + 86400000) // 24 hours
       )
     );
-  const timingPoints = await context.db
+  const timingPoints = await getDb(context)
     .select()
     .from(Schema.TimingPoints)
     .orderBy(asc(Schema.TimingPoints.order));
@@ -78,7 +79,7 @@ export async function action({ context, request }: Route.ActionArgs) {
     const longitude = parseFloat(formData.get("longitude") as string);
     const radius = parseInt(formData.get("radius") as string);
 
-    const newTimingPoint = await context.db
+    const newTimingPoint = await getDb(context)
       .insert(Schema.TimingPoints)
       .values({ name, latitude, longitude, radius })
       .returning({ id: Schema.TimingPoints.id });
@@ -87,7 +88,7 @@ export async function action({ context, request }: Route.ActionArgs) {
     return { created: newTimingPoint[0].id };
   } else if (request.method === "DELETE") {
     const id = parseInt(formData.get("id") as string);
-    await context.db
+    await getDb(context)
       .delete(Schema.TimingPoints)
       .where(eq(Schema.TimingPoints.id, id));
     return { success: true };
@@ -98,7 +99,7 @@ export async function action({ context, request }: Route.ActionArgs) {
     const order = parseInt(formData.get("order") as string);
     const applicableDatesRaw = formData.get("applicableDates") as string;
     const applicableDates = parseApplicableDatesInput(applicableDatesRaw);
-    await context.db
+    await getDb(context)
       .update(Schema.TimingPoints)
       .set({
         name,

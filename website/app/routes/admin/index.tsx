@@ -1,3 +1,4 @@
+import { getDb } from "~/routeContext";
 import { Button, Container, Stack, Text, Title } from "@mantine/core";
 import { sql } from "drizzle-orm";
 import { Link, type MetaFunction } from "react-router";
@@ -9,7 +10,7 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const availableDateRows = await context.db
+  const availableDateRows = await getDb(context)
     .select({
       date: sql<string>`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`.as(
         "date"

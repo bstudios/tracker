@@ -1,3 +1,4 @@
+import { getDb } from "~/routeContext";
 import { Center, Stack, Title } from "@mantine/core";
 import { and, desc, gte, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
@@ -22,7 +23,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     request,
   });
 
-  const events = await context.db
+  const events = await getDb(context)
     .select({
       timestamp: Schema.Events.timestamp,
       data: Schema.Events.data,
@@ -36,7 +37,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
       ),
     );
 
-  const timingPoints = await context.db
+  const timingPoints = await getDb(context)
     .select({
       name: Schema.TimingPoints.name,
       latitude: Schema.TimingPoints.latitude,
