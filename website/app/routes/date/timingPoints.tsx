@@ -1,13 +1,6 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { Anchor, Button, Container, Group, Table, Title } from "@mantine/core";
-import {
-  IconChevronLeft,
-  IconCoffee,
-  IconGasStation,
-  IconHistory,
-  IconList,
-  IconTrain,
-} from "@tabler/icons-react";
+import { Anchor, Container, Group, Table, Title } from "@mantine/core";
+import { IconCoffee, IconGasStation, IconTrain } from "@tabler/icons-react";
 import { and, asc, between, eq, or, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
@@ -202,30 +195,6 @@ export async function loader({ context }: Route.LoaderArgs) {
 export default function Page({ loaderData }: Route.ComponentProps) {
   return (
     <Container fluid p={"md"}>
-      <Group>
-        <Button
-          leftSection={<IconChevronLeft />}
-          component={Link}
-          to={`/${loaderData.password}/${loaderData.date}`}
-        >
-          Back to Map
-        </Button>
-        <Button
-          leftSection={<IconList />}
-          href={`/${loaderData.password}/${loaderData.date}/table`}
-          component="a"
-        >
-          View Full History
-        </Button>
-        <Button
-          leftSection={<IconHistory />}
-          href={`/${loaderData.password}/${loaderData.date}/timingsHistoric`}
-          component="a"
-        >
-          Compare to Other Dates
-        </Button>
-        <Title order={1}>History at Timing Points</Title>
-      </Group>
       {loaderData.timingPoints.length === 0 ? (
         <Title>No data available</Title>
       ) : (

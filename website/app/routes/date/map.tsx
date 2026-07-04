@@ -70,45 +70,22 @@ export default function Page({ loaderData }: Route.ComponentProps) {
     );
   }
   return (
-    <>
-      <LiveMap
-        zoom={13}
-        pins={loaderData.events
-          .filter(
-            (event) =>
-              "latitude" in event.data.location &&
-              "longitude" in event.data.location,
-          )
-          .map((event) => ({
-            latitude: event.data.location.latitude,
-            longitude: event.data.location.longitude,
-            timestamp: event.timestamp,
-          }))}
-        timingPoints={loaderData.timingPoints}
-        urlDate={loaderData.urlDate}
-        password={loaderData.password}
-      />
-      <Link
-        to={`/${loaderData.password}/${loaderData.urlDate}/analysis`}
-        style={{
-          position: "fixed",
-          top: 12,
-          right: 12,
-          zIndex: 2000,
-        }}
-      >
-        <Title
-          order={4}
-          c="pink"
-          style={{
-            background: "rgba(255,255,255,0.85)",
-            padding: "8px 12px",
-            borderRadius: 999,
-          }}
-        >
-          Analysis
-        </Title>
-      </Link>
-    </>
+    <LiveMap
+      zoom={13}
+      pins={loaderData.events
+        .filter(
+          (event) =>
+            "latitude" in event.data.location &&
+            "longitude" in event.data.location,
+        )
+        .map((event) => ({
+          latitude: event.data.location.latitude,
+          longitude: event.data.location.longitude,
+          timestamp: event.timestamp,
+        }))}
+      timingPoints={loaderData.timingPoints}
+      urlDate={loaderData.urlDate}
+      password={loaderData.password}
+    />
   );
 }

@@ -519,7 +519,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 export default function Page({ loaderData }: Route.ComponentProps) {
   const [hoveredPointId, setHoveredPointId] = useState<number | null>(null);
-  const backToMapHref = `/${loaderData.password}/${loaderData.urlDate}`;
+  const liveMapHref = `/${loaderData.password}/${loaderData.urlDate}/live`;
   const segmentSpeeds = loaderData.route.segments.map(
     (segment) => segment.speedMph,
   );
@@ -543,16 +543,6 @@ export default function Page({ loaderData }: Route.ComponentProps) {
   return (
     <Container fluid p="md">
       <Stack gap="md">
-        <Group justify="space-between" align="center">
-          <Group>
-            <Button component={Link} to={backToMapHref} variant="light">
-              Back to live map
-            </Button>
-            <Title order={1}>Analysis</Title>
-          </Group>
-          <Text c="dimmed">{loaderData.urlDate}</Text>
-        </Group>
-
         <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
           <Card withBorder>
             <Text c="dimmed" size="sm">
@@ -572,22 +562,6 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             </Text>
             <Title order={3}>{loaderData.summary.maxSpeedMph} mph</Title>
           </Card>
-          <Card withBorder>
-            <Text c="dimmed" size="sm">
-              Stops
-            </Text>
-            <Title order={3}>{loaderData.summary.stopCount}</Title>
-          </Card>
-          <Card withBorder>
-            <Text c="dimmed" size="sm">
-              Segments
-            </Text>
-            <Title order={3}>{loaderData.summary.segments}</Title>
-            <Text c="dimmed" size="xs">
-              Slowest segment:{" "}
-              {loaderData.summary.slowestSegmentSpeedMph ?? "n/a"} mph
-            </Text>
-          </Card>
         </SimpleGrid>
 
         <Card withBorder>
@@ -603,7 +577,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <Center py="xl">
               <Stack align="center">
                 <Title order={3}>No location data to analyse yet</Title>
-                <Button component={Link} to={backToMapHref} variant="light">
+                <Button component={Link} to={liveMapHref} variant="light">
                   Return to map
                 </Button>
               </Stack>

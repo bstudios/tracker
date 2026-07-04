@@ -11,13 +11,17 @@ export default [
   route("upload-flespi.json", "./routes/api/flespiUpload.ts"),
   route("upload.json", "./routes/api/appUpload.ts"),
   ...prefix(":password", [index("./routes/passwordDateSelector.tsx")]),
-  route(":password/:date", "./routes/protectedLayout.tsx", [
-    route("table/:cursor?", "./routes/table.tsx"),
-    route("timings", "./routes/timingPoints.tsx"),
-    route("timingsHistoric", "./routes/timingPointsHistoricComparison.tsx"),
-    route("analysis", "./routes/analysis.tsx"),
-    route("export.gpx", "./routes/downloadGPX.ts"),
-    index("./routes/map.tsx"),
+  route(":password/:date", "./routes/date/protectedLayout.tsx", [
+    route("live", "./routes/date/map.tsx"),
+    route("table/:cursor?", "./routes/date/table.tsx"),
+    route("timings", "./routes/date/timingPoints.tsx"),
+    route(
+      "timingsHistoric",
+      "./routes/date/timingPointsHistoricComparison.tsx",
+    ),
+    route("analysis", "./routes/date/analysis.tsx"),
+    route("export.gpx", "./routes/date/downloadGPX.ts"),
+    index("./routes/date/index.tsx"),
   ]),
   route("admin", "./routes/admin/layout.tsx", [
     index("./routes/admin/index.tsx"),

@@ -1,9 +1,8 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { Button, Container, Group, Table, Title } from "@mantine/core";
-import { IconChevronLeft } from "@tabler/icons-react";
+import { Container, Group, Table, Title } from "@mantine/core";
 import { asc, eq, or, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
-import { Link, type MetaFunction } from "react-router";
+import { type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/timingPointsHistoricComparison";
 
@@ -261,16 +260,6 @@ export async function loader({ context }: Route.LoaderArgs) {
 export default function Page({ loaderData }: Route.ComponentProps) {
   return (
     <Container fluid p={"md"}>
-      <Group>
-        <Button
-          leftSection={<IconChevronLeft />}
-          component={Link}
-          to={`/${loaderData.password}/${loaderData.date}`}
-        >
-          Back to Map
-        </Button>
-        <Title order={1}>Compare Timing Points Across Dates</Title>
-      </Group>
       {loaderData.rows.length === 0 ? (
         <Title>No data available</Title>
       ) : (
