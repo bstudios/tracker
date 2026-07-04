@@ -14,11 +14,11 @@
     "db:migrate": "wrangler d1 migrations apply --local DB"
   },
   "dependencies": {
-    "@mantine/charts": "^7.17.8",
-    "@mantine/core": "^7.17.8",
-    "@mantine/dates": "^7.17.8",
-    "@mantine/form": "^7.17.8",
-    "@mantine/hooks": "^7.17.8",
+    "@mantine/charts": "^9.4.1",
+    "@mantine/core": "^9.4.1",
+    "@mantine/dates": "^9.4.1",
+    "@mantine/form": "^9.4.1",
+    "@mantine/hooks": "^9.4.1",
     "@react-router/node": "^8.1.0",
     "@react-router/serve": "^8.1.0",
     "@tabler/icons-react": "^3.44.0",
@@ -34,6 +34,7 @@
     "react-leaflet": "^5.0.0",
     "react-router": "^8.1.0",
     "remix-utils": "^10.0.0",
+    "recharts": "^3.0.0",
     "zod": "^4.4.3",
     "zod-form-data": "^2.0.5"
   },
