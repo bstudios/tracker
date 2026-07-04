@@ -101,26 +101,22 @@ export async function loader({ context }: Route.LoaderArgs) {
         timestamp: points.timestamp,
         latitude: points.latitude,
         longitude: points.longitude,
-        previousPointId: sql<
-          number | null
-        >`LAG(${points.id}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
-          "previous_point_id",
-        ),
-        previousTimestamp: sql<
-          number | null
-        >`LAG(${points.timestamp}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
-          "previous_timestamp",
-        ),
-        previousLatitude: sql<
-          number | null
-        >`LAG(${points.latitude}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
-          "previous_latitude",
-        ),
-        previousLongitude: sql<
-          number | null
-        >`LAG(${points.longitude}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
-          "previous_longitude",
-        ),
+        previousPointId:
+          sql<number | null>`LAG(${points.id}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
+            "previous_point_id",
+          ),
+        previousTimestamp:
+          sql<number | null>`LAG(${points.timestamp}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
+            "previous_timestamp",
+          ),
+        previousLatitude:
+          sql<number | null>`LAG(${points.latitude}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
+            "previous_latitude",
+          ),
+        previousLongitude:
+          sql<number | null>`LAG(${points.longitude}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
+            "previous_longitude",
+          ),
       })
       .from(points),
   );
@@ -139,7 +135,8 @@ export async function loader({ context }: Route.LoaderArgs) {
     END
   `;
 
-  const timeDeltaSecondsExpression = sql<number>`
+  const timeDeltaSecondsExpression =
+    sql<number>`
       CASE
         WHEN ${pointsWithPrevious.previousTimestamp} IS NULL THEN 0
         WHEN ABS(${pointsWithPrevious.timestamp}) >= 1000000000000000 THEN (${pointsWithPrevious.timestamp} - ${pointsWithPrevious.previousTimestamp}) / 1000000.0
@@ -173,10 +170,9 @@ export async function loader({ context }: Route.LoaderArgs) {
         speedMph: sql<number>`${speedMpsExpression} * ${MPS_TO_MPH}`.as(
           "speed_mph",
         ),
-        isStop:
-          sql<number>`CASE WHEN ${speedMpsExpression} < 0.5 THEN 1 ELSE 0 END`.as(
-            "is_stop",
-          ),
+        isStop: sql<number>`CASE WHEN ${speedMpsExpression} < 0.5 THEN 1 ELSE 0 END`.as(
+          "is_stop",
+        ),
       })
       .from(pointsWithPrevious)
       .where(sql`${pointsWithPrevious.previousPointId} IS NOT NULL`),
@@ -253,18 +249,16 @@ export async function loader({ context }: Route.LoaderArgs) {
             0
           )
         `.as("chart_speed_cap_mph"),
-        stopCount:
-          sql<number>`(SELECT COALESCE(SUM(is_stop), 0) FROM segments)`.as(
-            "stop_count",
-          ),
-        slowestSegmentSpeedMph: sql<
-          number | null
-        >`(SELECT MIN(speed_mph) FROM segments)`.as(
-          "slowest_segment_speed_mph",
+        stopCount: sql<number>`(SELECT COALESCE(SUM(is_stop), 0) FROM segments)`.as(
+          "stop_count",
         ),
-      })
-      .from(points)
-      .limit(1),
+        slowestSegmentSpeedMph:
+          sql<number | null>`(SELECT MIN(speed_mph) FROM segments)`.as(
+            "slowest_segment_speed_mph",
+          ),
+        })
+        .from(points)
+        .limit(1),
   ]);
 
   const pointsWithDerivedSpeed = pointRows.map((point) => ({
@@ -275,7 +269,9 @@ export async function loader({ context }: Route.LoaderArgs) {
     speedMps: 0,
   }));
 
-  const outlierThresholdMph = Number(summaryRow[0]?.outlierThresholdMph ?? 120);
+  const outlierThresholdMph = Number(
+    summaryRow[0]?.outlierThresholdMph ?? 120,
+  );
 
   const pointIndexById = new Map<number, number>();
   pointsWithDerivedSpeed.forEach((point, index) => {
@@ -284,45 +280,45 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   const routeSegments = segmentRows
     .map((segment) => {
-      const pointIdFromField = Number(segment.pointId);
-      const pointIdFromSegmentId =
-        typeof segment.id === "string"
-          ? Number(segment.id.split("-")[1])
-          : Number.NaN;
-      const pointId = Number.isFinite(pointIdFromField)
-        ? pointIdFromField
-        : pointIdFromSegmentId;
-      const timestamp = Number(segment.timestamp);
-      const timeDeltaSeconds = Number(segment.timeDeltaSeconds);
-      const distanceMeters = Number(segment.distanceMeters);
-      const speedMps = Number(segment.speedMps);
-      const speedMph = Number(segment.speedMph);
-      const latitude = Number(segment.latitude);
-      const longitude = Number(segment.longitude);
-      const previousLatitude =
-        segment.previousLatitude != null
-          ? Number(segment.previousLatitude)
-          : latitude;
-      const previousLongitude =
-        segment.previousLongitude != null
-          ? Number(segment.previousLongitude)
-          : longitude;
+    const pointIdFromField = Number(segment.pointId);
+    const pointIdFromSegmentId =
+      typeof segment.id === "string"
+        ? Number(segment.id.split("-")[1])
+        : Number.NaN;
+    const pointId = Number.isFinite(pointIdFromField)
+      ? pointIdFromField
+      : pointIdFromSegmentId;
+    const timestamp = Number(segment.timestamp);
+    const timeDeltaSeconds = Number(segment.timeDeltaSeconds);
+    const distanceMeters = Number(segment.distanceMeters);
+    const speedMps = Number(segment.speedMps);
+    const speedMph = Number(segment.speedMph);
+    const latitude = Number(segment.latitude);
+    const longitude = Number(segment.longitude);
+    const previousLatitude =
+      segment.previousLatitude != null
+        ? Number(segment.previousLatitude)
+        : latitude;
+    const previousLongitude =
+      segment.previousLongitude != null
+        ? Number(segment.previousLongitude)
+        : longitude;
 
-      return {
-        id: segment.id,
-        pointId,
-        timestamp,
-        timeDeltaSeconds,
-        distanceMeters,
-        speedMps,
-        speedMph,
-        isStop: Boolean(segment.isStop),
-        positions: [
-          [previousLatitude, previousLongitude],
-          [latitude, longitude],
-        ] as [number, number][],
-      };
-    })
+    return {
+      id: segment.id,
+      pointId,
+      timestamp,
+      timeDeltaSeconds,
+      distanceMeters,
+      speedMps,
+      speedMph,
+      isStop: Boolean(segment.isStop),
+      positions: [
+        [previousLatitude, previousLongitude],
+        [latitude, longitude],
+      ] as [number, number][],
+    };
+  })
     .filter(
       (segment) =>
         Number.isFinite(segment.pointId) &&
@@ -350,8 +346,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   const filteredAverageSpeedMph =
     totalFilteredTimeDeltaSeconds > 0
-      ? (totalFilteredDistanceMeters / totalFilteredTimeDeltaSeconds) *
-        MPS_TO_MPH
+      ? (totalFilteredDistanceMeters / totalFilteredTimeDeltaSeconds) * MPS_TO_MPH
       : 0;
   const filteredMaxSpeedMph = routeSegments.reduce(
     (max, segment) => Math.max(max, segment.speedMph),
@@ -405,7 +400,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         filteredSlowestSegmentSpeedMph != null &&
         Number.isFinite(filteredSlowestSegmentSpeedMph)
           ? Number(filteredSlowestSegmentSpeedMph.toFixed(1))
-          : null,
+        : null,
     },
     route: {
       points: pointsWithDerivedSpeed,
@@ -636,6 +631,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             </Text>
           </Stack>
         </Card>
+
       </Stack>
     </Container>
   );
