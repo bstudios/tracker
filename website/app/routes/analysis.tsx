@@ -25,6 +25,31 @@ import type { Route } from "./+types/analysis";
 
 const MPS_TO_MPH = 2.2369362921;
 
+const toMillisTimestamp = (rawTimestamp: number) => {
+  const absTimestamp = Math.abs(rawTimestamp);
+
+  if (absTimestamp >= 1_000_000_000_000_000) {
+    return rawTimestamp / 1000;
+  }
+
+  if (absTimestamp >= 1_000_000_000_000) {
+    return rawTimestamp;
+  }
+
+  return rawTimestamp * 1000;
+};
+
+const formatChartTimestamp = (rawTimestamp: number) =>
+  DateTime.fromMillis(toMillisTimestamp(rawTimestamp), {
+    zone: "Europe/London",
+  }).toFormat("dd LLL yyyy, HH:mm:ss");
+
+const getYAxisStepMph = (maxSpeedMph: number) => {
+  if (maxSpeedMph <= 10) return 1;
+  if (maxSpeedMph <= 50) return 5;
+  return 10;
+};
+
 const chooseTickIntervalMinutes = (startMillis: number, endMillis: number) => {
   const durationMinutes = Math.max(1, (endMillis - startMillis) / 60000);
 
@@ -366,7 +391,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   const chartData = pointsWithDerivedSpeed.map((point) => ({
     pointId: point.id,
-    timestampMillis: point.timestamp,
+    timestampMillis: toMillisTimestamp(point.timestamp),
     speedMph: Number((point.speedMps * MPS_TO_MPH).toFixed(2)),
   }));
 
@@ -423,6 +448,13 @@ export default function Page({ loaderData }: Route.ComponentProps) {
     loaderData.summary.chartSpeedCapMph,
     loaderData.summary.maxSpeedMph * 1.05,
     loaderData.summary.averageSpeedMph,
+  );
+  const yAxisStepMph = getYAxisStepMph(chartYAxisMax);
+  const normalizedChartYAxisMax =
+    Math.ceil(chartYAxisMax / yAxisStepMph) * yAxisStepMph;
+  const yAxisTicks = Array.from(
+    { length: normalizedChartYAxisMax / yAxisStepMph + 1 },
+    (_, index) => index * yAxisStepMph,
   );
 
   const lineChartInteractionProps: {
@@ -529,19 +561,23 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               h={320}
               data={loaderData.chartData}
               dataKey="timestampMillis"
+              type="gradient"
+              fillOpacity={0.3}
               series={[
                 { name: "speedMph", color: "pink.6", label: "Speed (mph)" },
               ]}
               curveType="linear"
               withDots={false}
               withLegend
+              valueFormatter={(value: number) => `${value.toFixed(1)} mph`}
               tickLine="y"
               withXAxis
               withYAxis
               gridAxis="y"
               yAxisProps={{
-                domain: [0, chartYAxisMax],
+                domain: [0, normalizedChartYAxisMax],
                 allowDataOverflow: true,
+                ticks: yAxisTicks,
               }}
               xAxisProps={{
                 type: "number",
@@ -554,10 +590,47 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                   }).toFormat("HH:mm"),
               }}
               tooltipProps={{
-                labelFormatter: (value: number) =>
-                  DateTime.fromMillis(value, {
-                    zone: "Europe/London",
-                  }).toFormat("HH:mm:ss"),
+                content: ({
+                  active,
+                  label,
+                  payload,
+                }: {
+                  active?: boolean;
+                  label?: string | number;
+                  payload?: Array<{
+                    name?: string;
+                    value?: string | number;
+                    color?: string;
+                  }>;
+                }) => {
+                  if (!active || !payload?.length) {
+                    return null;
+                  }
+
+                  const speedEntry = payload.find(
+                    (entry) => entry.name === "speedMph",
+                  );
+                  const speedValue = Number(speedEntry?.value ?? 0);
+
+                  return (
+                    <div
+                      style={{
+                        background: "white",
+                        border: "1px solid #dee2e6",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+                      }}
+                    >
+                      <Text size="xs" c="dimmed">
+                        {formatChartTimestamp(Number(label))}
+                      </Text>
+                      <Text size="sm" fw={600} c={speedEntry?.color}>
+                        Speed: {speedValue.toFixed(1)} mph
+                      </Text>
+                    </div>
+                  );
+                },
               }}
               lineChartProps={lineChartInteractionProps}
             />
@@ -569,8 +642,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <div>
               <Title order={2}>Route by speed</Title>
               <Text c="dimmed" size="sm">
-                The path is split into segments and colored by pace. Slower
-                sections are easier to spot than on the live map.
+                The path is split into segments and colored by speed: red is
+                slowest, amber is mid pace, and green is fastest.
               </Text>
             </div>
           </Group>
@@ -595,7 +668,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
           </Title>
           <Stack gap="xs">
             <Text c="dimmed" size="sm">
-              Route segments are colored by speed for this day&apos;s range.
+              Route segments are colored by speed for this day&apos;s range
+              (slow red to fast green).
             </Text>
             {hasSegmentSpeeds ? (
               <>

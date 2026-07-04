@@ -16,7 +16,7 @@ import {
 import { DivIcon, divIcon, LatLng } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { DateTime } from "luxon";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   AttributionControl,
@@ -32,6 +32,12 @@ import {
 } from "react-leaflet";
 import { Link, useRevalidator } from "react-router";
 import { theme } from "~/root";
+import {
+  createRestrictedViewportBounds,
+  mapPerformanceConfig,
+} from "../mapPerformance";
+import { MapCenterConstraint } from "../MapCenterConstraint.client";
+import { MapZoomOutConstraint } from "../MapZoomOutConstraint.client";
 import type { MapProps } from "./LiveMap";
 
 export const MantineProviderWrapper = (props: {
@@ -41,7 +47,7 @@ export const MantineProviderWrapper = (props: {
 const tablerMapIcon = (children: React.ReactNode) =>
   divIcon({
     html: renderToStaticMarkup(
-      <MantineProviderWrapper>{children}</MantineProviderWrapper>
+      <MantineProviderWrapper>{children}</MantineProviderWrapper>,
     ),
     iconSize: [20, 20],
     className: "myDivIcon",
@@ -130,6 +136,7 @@ const PreventPagePinchZoom = () => {
 
 export const Map = (props: MapProps) => {
   const revalidator = useRevalidator();
+  const config = mapPerformanceConfig.live;
 
   useEffect(() => {
     const intervalId = setInterval(() => revalidator.revalidate(), 60 * 1000); // Refresh the page for new data every minute
@@ -142,25 +149,61 @@ export const Map = (props: MapProps) => {
   }
 
   const uniquePins = Object.values(
-    props.pins.reduce((acc, pin) => {
-      const key = `${pin.latitude.toFixed(7)},${pin.longitude.toFixed(7)}`;
-      if (!acc[key] || acc[key].timestamp < pin.timestamp) {
-        acc[key] = pin;
-      }
-      return acc;
-    }, {} as Record<string, (typeof props.pins)[0]>)
+    props.pins.reduce(
+      (acc, pin) => {
+        const key = `${pin.latitude.toFixed(7)},${pin.longitude.toFixed(7)}`;
+        if (!acc[key] || acc[key].timestamp < pin.timestamp) {
+          acc[key] = pin;
+        }
+        return acc;
+      },
+      {} as Record<string, (typeof props.pins)[0]>,
+    ),
   );
 
   const highestTimestampPin = props.pins.reduce((maxPin, currentPin) => {
     return currentPin.timestamp > maxPin.timestamp ? currentPin : maxPin;
   }, props.pins[0]);
 
-  const groupedTimingPoints = props.timingPoints.reduce((acc, timingPoint) => {
-    const groupName = timingPoint.group ?? "Other Timing Points";
-    if (!acc[groupName]) acc[groupName] = [];
-    acc[groupName].push(timingPoint);
-    return acc;
-  }, {} as Record<string, Array<(typeof props.timingPoints)[number]>>);
+  const groupedTimingPoints = props.timingPoints.reduce(
+    (acc, timingPoint) => {
+      const groupName = timingPoint.group ?? "Other Timing Points";
+      if (!acc[groupName]) acc[groupName] = [];
+      acc[groupName].push(timingPoint);
+      return acc;
+    },
+    {} as Record<string, Array<(typeof props.timingPoints)[number]>>,
+  );
+
+  const viewportBounds = useMemo(
+    () =>
+      createRestrictedViewportBounds(
+        [
+          ...props.pins,
+          ...props.timingPoints.map((timingPoint) => ({
+            latitude: timingPoint.latitude,
+            longitude: timingPoint.longitude,
+          })),
+        ],
+        { paddingRatio: config.centerConstraintPaddingRatio },
+      ),
+    [config.centerConstraintPaddingRatio, props.pins, props.timingPoints],
+  );
+
+  const zoomOutBounds = useMemo(
+    () =>
+      createRestrictedViewportBounds(
+        [
+          ...props.pins,
+          ...props.timingPoints.map((timingPoint) => ({
+            latitude: timingPoint.latitude,
+            longitude: timingPoint.longitude,
+          })),
+        ],
+        { paddingRatio: config.zoomOutPaddingRatio },
+      ),
+    [config.zoomOutPaddingRatio, props.pins, props.timingPoints],
+  );
 
   if (!width || !height || width === 0 || height === 0)
     return null; // You can only render the map once, subsequent re-renders won't do anything - so we need to wait until we have the viewport size
@@ -181,9 +224,12 @@ export const Map = (props: MapProps) => {
           attributionControl={false}
         >
           <PreventPagePinchZoom />
+          <MapCenterConstraint bounds={viewportBounds} />
+          <MapZoomOutConstraint bounds={zoomOutBounds} />
           <TileLayer
             attribution='Map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            {...config.tileLayer}
           />
           <AttributionControl
             position="bottomright"
@@ -199,7 +245,7 @@ export const Map = (props: MapProps) => {
             icon={tablerMapIcon(
               <ThemeIcon radius="md" size="lg">
                 <IconCompass style={{ width: "70%", height: "70%" }} />
-              </ThemeIcon>
+              </ThemeIcon>,
             )}
           />
           <Marker
@@ -211,7 +257,7 @@ export const Map = (props: MapProps) => {
             icon={tablerMapIcon(
               <ThemeIcon radius="md" size="lg">
                 <IconCar style={{ width: "70%", height: "70%" }} />
-              </ThemeIcon>
+              </ThemeIcon>,
             )}
           >
             <Popup>
@@ -222,7 +268,7 @@ export const Map = (props: MapProps) => {
                     highestTimestampPin.timestamp / 1000,
                     {
                       zone: "local",
-                    }
+                    },
                   );
                   // Only show if last seen is today and less than 12 hours ago
                   if (
@@ -308,7 +354,7 @@ export const Map = (props: MapProps) => {
                               style={{ width: "70%", height: "70%" }}
                             />
                           )}
-                        </ThemeIcon>
+                        </ThemeIcon>,
                       )}
                     >
                       <Popup>

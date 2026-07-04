@@ -1,11 +1,9 @@
 type RgbColor = [number, number, number];
 
 const PALETTE_STOPS: Array<{ t: number; color: RgbColor }> = [
-  { t: 0, color: [124, 58, 237] },
-  { t: 0.25, color: [37, 99, 235] },
-  { t: 0.5, color: [22, 163, 74] },
-  { t: 0.75, color: [245, 158, 11] },
-  { t: 1, color: [220, 38, 38] },
+  { t: 0, color: [220, 38, 38] },
+  { t: 0.5, color: [245, 158, 11] },
+  { t: 1, color: [22, 163, 74] },
 ];
 
 export type SpeedRange = {
