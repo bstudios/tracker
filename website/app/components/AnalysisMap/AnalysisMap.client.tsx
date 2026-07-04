@@ -12,19 +12,23 @@ import {
   TileLayer,
 } from "react-leaflet";
 import { theme } from "~/root";
+import { getSpeedRange, speedToColor } from "./speedColor";
 
 export type AnalysisRoutePoint = {
   id: number;
   timestamp: number;
   latitude: number;
   longitude: number;
-  speed: number;
+  speedMps: number;
 };
 
 export type AnalysisRouteSegment = {
   id: string;
+  pointId: number;
   timestamp: number;
   timeDeltaSeconds: number;
+  distanceMeters: number;
+  speedMps: number;
   speedMph: number;
   isStop: boolean;
   positions: [number, number][];
@@ -39,19 +43,15 @@ const mapIcon = (children: ReactNode) =>
     className: "myDivIcon",
   });
 
-const speedColor = (speedMph: number) => {
-  if (speedMph < 1) return "#7c3aed";
-  if (speedMph < 12) return "#2563eb";
-  if (speedMph < 31) return "#16a34a";
-  if (speedMph < 50) return "#f59e0b";
-  return "#dc2626";
-};
-
 export function AnalysisMap(props: {
   points: AnalysisRoutePoint[];
   segments: AnalysisRouteSegment[];
   highlightedPointId?: number | null;
 }) {
+  const speedRange = getSpeedRange(
+    props.segments.map((segment) => segment.speedMph),
+  );
+
   const highlightedPoint =
     typeof props.highlightedPointId === "number"
       ? props.points.find((point) => point.id === props.highlightedPointId)
@@ -83,7 +83,7 @@ export function AnalysisMap(props: {
             key={segment.id}
             positions={segment.positions}
             pathOptions={{
-              color: speedColor(segment.speedMph),
+              color: speedToColor(segment.speedMph, speedRange),
               weight: 5,
             }}
           />
@@ -103,7 +103,7 @@ export function AnalysisMap(props: {
                 zone: "Europe/London",
               }).toLocaleString(DateTime.DATETIME_MED)}
               <br />
-              {(highlightedPoint.speed * 2.2369362921).toFixed(1)} mph
+              {(highlightedPoint.speedMps * 2.2369362921).toFixed(1)} mph
             </Popup>
           </Marker>
         ) : null}

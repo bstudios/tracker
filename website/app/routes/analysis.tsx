@@ -11,11 +11,15 @@ import {
   Title,
 } from "@mantine/core";
 import { LineChart } from "@mantine/charts";
-import { and, asc, gte, lte } from "drizzle-orm";
+import { and, asc, gte, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { useState } from "react";
 import { Link, type MetaFunction } from "react-router";
 import { AnalysisMap } from "~/components/AnalysisMap/AnalysisMap";
+import {
+  buildLegendTicks,
+  getSpeedRange,
+} from "~/components/AnalysisMap/speedColor";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/analysis";
 
@@ -60,77 +64,232 @@ export const meta: MetaFunction = () => {
 export async function loader({ context }: Route.LoaderArgs) {
   const { refDate, urlDate, password } = getPasswordRouteAccess(context);
 
-  const events = await getDb(context)
-    .select({
-      id: Schema.Events.id,
-      timestamp: Schema.Events.timestamp,
-      data: Schema.Events.data,
-    })
-    .from(Schema.Events)
-    .orderBy(asc(Schema.Events.timestamp))
-    .where(
-      and(
-        gte(Schema.Events.timestamp, refDate.toMillis()),
-        lte(Schema.Events.timestamp, refDate.toMillis() + 86400000),
-      ),
-    );
+  const db = getDb(context);
+  const dayStart = refDate.startOf("day").toMillis();
+  const dayEnd = refDate.endOf("day").toMillis();
 
-  const eventsWithLocation = events
-    .filter(
-      (event) =>
-        "latitude" in event.data.location && "longitude" in event.data.location,
-    )
-    .map((event) => ({
-      id: event.id,
-      timestamp: event.timestamp,
-      latitude: event.data.location.latitude,
-      longitude: event.data.location.longitude,
-      speed: event.data.location.speed,
-    }));
+  const points = db.$with("points").as(
+    db
+      .select({
+        id: Schema.Events.id,
+        timestamp: Schema.Events.timestamp,
+        latitude:
+          sql<number>`json_extract(${Schema.Events.data}, '$.location.latitude')`.as(
+            "latitude",
+          ),
+        longitude:
+          sql<number>`json_extract(${Schema.Events.data}, '$.location.longitude')`.as(
+            "longitude",
+          ),
+      })
+      .from(Schema.Events)
+      .where(
+        and(
+          gte(Schema.Events.timestamp, dayStart),
+          lte(Schema.Events.timestamp, dayEnd),
+          sql`json_extract(${Schema.Events.data}, '$.location.latitude') IS NOT NULL`,
+          sql`json_extract(${Schema.Events.data}, '$.location.longitude') IS NOT NULL`,
+        ),
+      )
+      .orderBy(asc(Schema.Events.timestamp)),
+  );
 
-  const segments = eventsWithLocation.slice(1).map((point, index) => {
-    const previousPoint = eventsWithLocation[index];
-    const timeDeltaSeconds = (point.timestamp - previousPoint.timestamp) / 1000;
-    const speedMph = point.speed * MPS_TO_MPH;
-    const isStop = point.speed < 0.5;
+  const pointsWithPrevious = db.$with("points_with_previous").as(
+    db
+      .select({
+        id: points.id,
+        timestamp: points.timestamp,
+        latitude: points.latitude,
+        longitude: points.longitude,
+        previousPointId:
+          sql<number | null>`LAG(${points.id}) OVER (ORDER BY ${points.timestamp})`.as(
+            "previous_point_id",
+          ),
+        previousTimestamp:
+          sql<number | null>`LAG(${points.timestamp}) OVER (ORDER BY ${points.timestamp})`.as(
+            "previous_timestamp",
+          ),
+        previousLatitude:
+          sql<number | null>`LAG(${points.latitude}) OVER (ORDER BY ${points.timestamp})`.as(
+            "previous_latitude",
+          ),
+        previousLongitude:
+          sql<number | null>`LAG(${points.longitude}) OVER (ORDER BY ${points.timestamp})`.as(
+            "previous_longitude",
+          ),
+      })
+      .from(points),
+  );
+
+  const distanceMetersExpression = sql<number>`
+    CASE
+      WHEN ${pointsWithPrevious.previousLatitude} IS NULL OR ${pointsWithPrevious.previousLongitude} IS NULL THEN 0
+      ELSE (${6371000 * 2} * ASIN(MIN(1.0, SQRT(
+        SIN((${pointsWithPrevious.latitude} - ${pointsWithPrevious.previousLatitude}) * 0.00872664626) *
+        SIN((${pointsWithPrevious.latitude} - ${pointsWithPrevious.previousLatitude}) * 0.00872664626) +
+        COS(${pointsWithPrevious.previousLatitude} * 0.01745329252) *
+        COS(${pointsWithPrevious.latitude} * 0.01745329252) *
+        SIN((${pointsWithPrevious.longitude} - ${pointsWithPrevious.previousLongitude}) * 0.00872664626) *
+        SIN((${pointsWithPrevious.longitude} - ${pointsWithPrevious.previousLongitude}) * 0.00872664626)
+      ))))
+    END
+  `;
+
+  const timeDeltaSecondsExpression =
+    sql<number>`(${pointsWithPrevious.timestamp} - ${pointsWithPrevious.previousTimestamp}) / 1000.0`;
+
+  const speedMpsExpression = sql<number>`
+    CASE
+      WHEN ${timeDeltaSecondsExpression} > 0 THEN ${distanceMetersExpression} / ${timeDeltaSecondsExpression}
+      ELSE 0
+    END
+  `;
+
+  const segments = db.$with("segments").as(
+    db
+      .select({
+        id: sql<string>`${pointsWithPrevious.previousPointId} || '-' || ${pointsWithPrevious.id}`.as(
+          "id",
+        ),
+        pointId: pointsWithPrevious.id,
+        timestamp: pointsWithPrevious.timestamp,
+        previousLatitude: pointsWithPrevious.previousLatitude,
+        previousLongitude: pointsWithPrevious.previousLongitude,
+        latitude: pointsWithPrevious.latitude,
+        longitude: pointsWithPrevious.longitude,
+        timeDeltaSeconds: timeDeltaSecondsExpression.as("time_delta_seconds"),
+        distanceMeters: distanceMetersExpression.as("distance_meters"),
+        speedMps: speedMpsExpression.as("speed_mps"),
+        speedMph: sql<number>`${speedMpsExpression} * ${MPS_TO_MPH}`.as(
+          "speed_mph",
+        ),
+        isStop: sql<number>`CASE WHEN ${speedMpsExpression} < 0.5 THEN 1 ELSE 0 END`.as(
+          "is_stop",
+        ),
+      })
+      .from(pointsWithPrevious)
+      .where(sql`${pointsWithPrevious.previousPointId} IS NOT NULL`),
+  );
+
+  const rankedSegments = db.$with("ranked_segments").as(
+    db
+      .select({
+        speedMph: segments.speedMph,
+        speedMps: segments.speedMps,
+        distanceMeters: segments.distanceMeters,
+        timeDeltaSeconds: segments.timeDeltaSeconds,
+        isStop: segments.isStop,
+        speedPercentileBucket:
+          sql<number>`NTILE(100) OVER (ORDER BY ${segments.speedMps})`.as(
+            "speed_percentile_bucket",
+          ),
+      })
+      .from(segments)
+      .where(sql`${segments.speedMps} >= 0`),
+  );
+
+  const [pointRows, segmentRows, summaryRow] = await Promise.all([
+    db
+      .with(points)
+      .select({
+        id: points.id,
+        timestamp: points.timestamp,
+        latitude: points.latitude,
+        longitude: points.longitude,
+      })
+      .from(points)
+      .orderBy(asc(points.timestamp)),
+    db
+      .with(points, pointsWithPrevious, segments)
+      .select({
+        id: segments.id,
+        pointId: segments.pointId,
+        timestamp: segments.timestamp,
+        timeDeltaSeconds: segments.timeDeltaSeconds,
+        distanceMeters: segments.distanceMeters,
+        speedMps: segments.speedMps,
+        speedMph: segments.speedMph,
+        isStop: segments.isStop,
+        previousLatitude: segments.previousLatitude,
+        previousLongitude: segments.previousLongitude,
+        latitude: segments.latitude,
+        longitude: segments.longitude,
+      })
+      .from(segments)
+      .orderBy(asc(segments.timestamp)),
+    db
+      .with(points, pointsWithPrevious, segments, rankedSegments)
+      .select({
+        points: sql<number>`(SELECT COUNT(*) FROM points)`.as("points"),
+        segments: sql<number>`(SELECT COUNT(*) FROM segments)`.as("segments"),
+        averageSpeedMph: sql<number>`
+          COALESCE(
+            (
+              SELECT CASE
+                WHEN SUM(time_delta_seconds) > 0
+                THEN (SUM(distance_meters) / SUM(time_delta_seconds)) * ${MPS_TO_MPH}
+                ELSE 0
+              END
+              FROM segments
+            ),
+            0
+          )
+        `.as("average_speed_mph"),
+        maxSpeedMph: sql<number>`
+          COALESCE(
+            (SELECT MAX(speed_mph) FROM ranked_segments WHERE speed_percentile_bucket <= 99),
+            (SELECT MAX(speed_mph) FROM ranked_segments),
+            0
+          )
+        `.as("max_speed_mph"),
+        stopCount: sql<number>`(SELECT COALESCE(SUM(is_stop), 0) FROM segments)`.as(
+          "stop_count",
+        ),
+        slowestSegmentSpeedMph:
+          sql<number | null>`(SELECT MIN(speed_mph) FROM segments)`.as(
+            "slowest_segment_speed_mph",
+          ),
+        })
+        .from(points)
+        .limit(1),
+  ]);
+
+  const pointsWithDerivedSpeed = pointRows.map((point) => ({
+    ...point,
+    speedMps: 0,
+  }));
+
+  const pointIndexById = new Map<number, number>();
+  pointsWithDerivedSpeed.forEach((point, index) => {
+    pointIndexById.set(point.id, index);
+  });
+
+  const routeSegments = segmentRows.map((segment) => {
+    const pointIndex = pointIndexById.get(segment.pointId);
+    if (typeof pointIndex === "number") {
+      pointsWithDerivedSpeed[pointIndex].speedMps = segment.speedMps;
+    }
 
     return {
-      id: `${previousPoint.id}-${point.id}`,
-      timestamp: point.timestamp,
-      timeDeltaSeconds,
-      speedMph,
-      isStop,
+      id: segment.id,
+      pointId: segment.pointId,
+      timestamp: segment.timestamp,
+      timeDeltaSeconds: segment.timeDeltaSeconds,
+      distanceMeters: segment.distanceMeters,
+      speedMps: segment.speedMps,
+      speedMph: segment.speedMph,
+      isStop: Boolean(segment.isStop),
       positions: [
-        [previousPoint.latitude, previousPoint.longitude],
-        [point.latitude, point.longitude],
+        [segment.previousLatitude ?? segment.latitude, segment.previousLongitude ?? segment.longitude],
+        [segment.latitude, segment.longitude],
       ] as [number, number][],
     };
   });
 
-  const averageSpeedMph =
-    eventsWithLocation.length === 0
-      ? 0
-      : eventsWithLocation.reduce(
-          (sum, point) => sum + point.speed * MPS_TO_MPH,
-          0,
-        ) / eventsWithLocation.length;
-
-  const maxSpeedMph = eventsWithLocation.reduce(
-    (max, point) => Math.max(max, point.speed * MPS_TO_MPH),
-    0,
-  );
-
-  const stopCount = segments.filter((segment) => segment.isStop).length;
-  const slowestSegment = segments.reduce(
-    (slowest, segment) =>
-      !slowest || segment.speedMph < slowest.speedMph ? segment : slowest,
-    null as (typeof segments)[number] | null,
-  );
-
-  const chartData = eventsWithLocation.map((point) => ({
+  const chartData = pointsWithDerivedSpeed.map((point) => ({
     pointId: point.id,
     timestampMillis: point.timestamp,
-    speedMph: Number((point.speed * MPS_TO_MPH).toFixed(2)),
+    speedMph: Number((point.speedMps * MPS_TO_MPH).toFixed(2)),
   }));
 
   const roundedTickTimestamps =
@@ -148,18 +307,19 @@ export async function loader({ context }: Route.LoaderArgs) {
     chartData,
     roundedTickTimestamps,
     summary: {
-      points: eventsWithLocation.length,
-      segments: segments.length,
-      averageSpeedMph: Number(averageSpeedMph.toFixed(1)),
-      maxSpeedMph: Number(maxSpeedMph.toFixed(1)),
-      stopCount,
-      slowestSegmentSpeedMph: slowestSegment
-        ? Number(slowestSegment.speedMph.toFixed(1))
+      points: summaryRow[0]?.points ?? 0,
+      segments: summaryRow[0]?.segments ?? 0,
+      averageSpeedMph: Number((summaryRow[0]?.averageSpeedMph ?? 0).toFixed(1)),
+      maxSpeedMph: Number((summaryRow[0]?.maxSpeedMph ?? 0).toFixed(1)),
+      stopCount: summaryRow[0]?.stopCount ?? 0,
+      slowestSegmentSpeedMph:
+        summaryRow[0]?.slowestSegmentSpeedMph != null
+          ? Number(summaryRow[0].slowestSegmentSpeedMph.toFixed(1))
         : null,
     },
     route: {
-      points: eventsWithLocation,
-      segments,
+      points: pointsWithDerivedSpeed,
+      segments: routeSegments,
     },
   };
 }
@@ -167,6 +327,12 @@ export async function loader({ context }: Route.LoaderArgs) {
 export default function Page({ loaderData }: Route.ComponentProps) {
   const [hoveredPointId, setHoveredPointId] = useState<number | null>(null);
   const backToMapHref = `/${loaderData.password}/${loaderData.urlDate}`;
+  const segmentSpeeds = loaderData.route.segments.map(
+    (segment) => segment.speedMph,
+  );
+  const hasSegmentSpeeds = segmentSpeeds.length > 0;
+  const speedRange = getSpeedRange(segmentSpeeds);
+  const legendTicks = hasSegmentSpeeds ? buildLegendTicks(speedRange, 5) : [];
 
   const lineChartInteractionProps: {
     onMouseMove: (event: unknown) => void;
@@ -327,70 +493,36 @@ export default function Page({ loaderData }: Route.ComponentProps) {
           </Title>
           <Stack gap="xs">
             <Text c="dimmed" size="sm">
-              Route segments are colored by speed:
+              Route segments are colored by speed for this day&apos;s range.
             </Text>
-            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-              <Group gap="xs" wrap="nowrap">
-                <div
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 999,
-                    backgroundColor: "#7c3aed",
-                    flexShrink: 0,
-                  }}
-                />
-                <Text size="sm">Under 1 mph</Text>
-              </Group>
-              <Group gap="xs" wrap="nowrap">
-                <div
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 999,
-                    backgroundColor: "#2563eb",
-                    flexShrink: 0,
-                  }}
-                />
-                <Text size="sm">1 to 12 mph</Text>
-              </Group>
-              <Group gap="xs" wrap="nowrap">
-                <div
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 999,
-                    backgroundColor: "#16a34a",
-                    flexShrink: 0,
-                  }}
-                />
-                <Text size="sm">12 to 31 mph</Text>
-              </Group>
-              <Group gap="xs" wrap="nowrap">
-                <div
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 999,
-                    backgroundColor: "#f59e0b",
-                    flexShrink: 0,
-                  }}
-                />
-                <Text size="sm">31 to 50 mph</Text>
-              </Group>
-              <Group gap="xs" wrap="nowrap">
-                <div
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 999,
-                    backgroundColor: "#dc2626",
-                    flexShrink: 0,
-                  }}
-                />
-                <Text size="sm">Over 50 mph</Text>
-              </Group>
-            </SimpleGrid>
+            {hasSegmentSpeeds ? (
+              <>
+                <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+                  {legendTicks.map((tick) => (
+                    <Group key={tick.speedMph} gap="xs" wrap="nowrap">
+                      <div
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: 999,
+                          backgroundColor: tick.color,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <Text size="sm">{tick.speedMph.toFixed(1)} mph</Text>
+                    </Group>
+                  ))}
+                </SimpleGrid>
+                <Text c="dimmed" size="xs">
+                  Min {speedRange.minMph.toFixed(1)} mph, max{" "}
+                  {speedRange.maxMph.toFixed(1)} mph.
+                </Text>
+              </>
+            ) : (
+              <Text c="dimmed" size="sm">
+                No route segments available for speed-based coloring yet.
+              </Text>
+            )}
             <Text c="dimmed" size="sm">
               Hover over the speed chart to place the red X marker on the
               corresponding map position.
