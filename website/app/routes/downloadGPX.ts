@@ -1,16 +1,11 @@
-import { getDb } from "~/routeContext";
+import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { and, asc, gte, lte } from "drizzle-orm";
 import { DateTime } from "luxon";
-import { ensurePasswordAccess } from "~/passwordAccess.server";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/downloadGPX";
 
-export async function loader({ context, params, request }: Route.LoaderArgs) {
-  const { refDate, urlDate } = await ensurePasswordAccess({
-    password: params.password,
-    dateParam: params.date,
-    request,
-  });
+export async function loader({ context, params }: Route.LoaderArgs) {
+  const { refDate, urlDate } = getPasswordRouteAccess(context);
 
   const stream = new ReadableStream({
     async start(controller) {

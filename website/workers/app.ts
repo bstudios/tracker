@@ -3,7 +3,6 @@ import { createRequestHandler, RouterContextProvider } from "react-router";
 import { drizzleLogger } from "../database/logger";
 import * as schema from "../database/schema.d";
 import { cloudflareContext, dbContext } from "../app/routeContext";
-import { enforceCloudflareAccessOnAdminRoutes } from "./cloudflareAccessAdminMiddleware";
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
@@ -12,14 +11,6 @@ const requestHandler = createRequestHandler(
 
 export default {
   async fetch(request, env, ctx) {
-    const accessResponse = await enforceCloudflareAccessOnAdminRoutes(
-      request,
-      env,
-    );
-    if (accessResponse) {
-      return accessResponse;
-    }
-
     const db: DrizzleD1Database<typeof schema> = drizzle(env.DB, {
       schema,
       logger: drizzleLogger,

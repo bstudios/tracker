@@ -1,4 +1,4 @@
-import { getDb } from "~/routeContext";
+import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Button, Container, Group, Table, Text, Title } from "@mantine/core";
 import {
   IconBrandApple,
@@ -10,7 +10,6 @@ import { and, desc, gte, lt, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { useEffect, useState } from "react";
 import { Link, useFetcher, type MetaFunction } from "react-router";
-import { ensurePasswordAccess } from "~/passwordAccess.server";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/table";
 
@@ -19,13 +18,9 @@ export const meta: MetaFunction = () => {
 };
 
 const pageLength = 50;
-export async function loader({ context, request, params }: Route.LoaderArgs) {
+export async function loader({ context, params }: Route.LoaderArgs) {
   const cursor = params.cursor;
-  const { refDate, urlDate, password } = await ensurePasswordAccess({
-    password: params.password,
-    dateParam: params.date,
-    request,
-  });
+  const { refDate, urlDate, password } = getPasswordRouteAccess(context);
 
   const events = await getDb(context)
     .select({

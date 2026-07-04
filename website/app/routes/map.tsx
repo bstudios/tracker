@@ -1,9 +1,8 @@
-import { getDb } from "~/routeContext";
+import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Center, Stack, Title } from "@mantine/core";
 import { and, desc, gte, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
-import { Link, redirect, type MetaFunction } from "react-router";
-import { ensurePasswordAccess } from "~/passwordAccess.server";
+import { Link, type MetaFunction } from "react-router";
 import { LiveMap } from "~/components/LiveMap/LiveMap";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/map";
@@ -12,16 +11,8 @@ export const meta: MetaFunction = () => {
   return [{ title: "Tracking" }];
 };
 
-export async function loader({ context, params, request }: Route.LoaderArgs) {
-  if (!params.password) {
-    throw redirect("/");
-  }
-
-  const { refDate, urlDate, password } = await ensurePasswordAccess({
-    password: params.password,
-    dateParam: params.date,
-    request,
-  });
+export async function loader({ context }: Route.LoaderArgs) {
+  const { refDate, urlDate, password } = getPasswordRouteAccess(context);
 
   const events = await getDb(context)
     .select({

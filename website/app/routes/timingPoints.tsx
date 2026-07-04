@@ -1,4 +1,4 @@
-import { getDb } from "~/routeContext";
+import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Anchor, Button, Container, Group, Table, Title } from "@mantine/core";
 import {
   IconChevronLeft,
@@ -11,7 +11,6 @@ import {
 import { and, asc, between, eq, or, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
-import { ensurePasswordAccess } from "~/passwordAccess.server";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/timingPoints";
 
@@ -19,75 +18,77 @@ export const meta: MetaFunction = () => {
   return [{ title: "Timing Points" }];
 };
 
-export async function loader({ context, request, params }: Route.LoaderArgs) {
-  const { refDate, urlDate, password } = await ensurePasswordAccess({
-    password: params.password,
-    dateParam: params.date,
-    request,
-  });
+export async function loader({ context }: Route.LoaderArgs) {
+  const { refDate, urlDate, password } = getPasswordRouteAccess(context);
 
   const startOfDay = refDate.startOf("day").toMillis();
   const endOfDay = refDate.endOf("day").toMillis();
 
   // All timing points applicable on the chosen date
-  const selectedTimingPoints = getDb(context).$with("selected_timing_points").as(
-    getDb(context)
-      .select({
-        id: Schema.TimingPoints.id,
-        order: Schema.TimingPoints.order,
-        name: Schema.TimingPoints.name,
-        icon: Schema.TimingPoints.icon,
-        googleLink: Schema.TimingPoints.googleLink,
-        latitude: Schema.TimingPoints.latitude,
-        longitude: Schema.TimingPoints.longitude,
-      })
-      .from(Schema.TimingPoints)
-      .where(
-        sql`EXISTS (
+  const selectedTimingPoints = getDb(context)
+    .$with("selected_timing_points")
+    .as(
+      getDb(context)
+        .select({
+          id: Schema.TimingPoints.id,
+          order: Schema.TimingPoints.order,
+          name: Schema.TimingPoints.name,
+          icon: Schema.TimingPoints.icon,
+          googleLink: Schema.TimingPoints.googleLink,
+          latitude: Schema.TimingPoints.latitude,
+          longitude: Schema.TimingPoints.longitude,
+        })
+        .from(Schema.TimingPoints)
+        .where(
+          sql`EXISTS (
           SELECT 1 FROM json_each(${Schema.TimingPoints.applicableDates})
           WHERE value = ${urlDate}
         )`,
-      ),
-  );
+        ),
+    );
 
   // Get all events for the day
-  const dailyEvents = getDb(context).$with("daily_events").as(
-    getDb(context)
-      .select({
-        id: Schema.Events.id,
-        timestamp: Schema.Events.timestamp,
-        event_latitude:
-          sql<number>`json_extract(data, '$.location.latitude')`.as(
-            "event_latitude",
-          ),
-        event_longitude:
-          sql<number>`json_extract(data, '$.location.longitude')`.as(
-            "event_longitude",
-          ),
-      })
-      .from(Schema.Events)
-      .where(between(Schema.Events.timestamp, startOfDay, endOfDay)),
-  );
+  const dailyEvents = getDb(context)
+    .$with("daily_events")
+    .as(
+      getDb(context)
+        .select({
+          id: Schema.Events.id,
+          timestamp: Schema.Events.timestamp,
+          event_latitude:
+            sql<number>`json_extract(data, '$.location.latitude')`.as(
+              "event_latitude",
+            ),
+          event_longitude:
+            sql<number>`json_extract(data, '$.location.longitude')`.as(
+              "event_longitude",
+            ),
+        })
+        .from(Schema.Events)
+        .where(between(Schema.Events.timestamp, startOfDay, endOfDay)),
+    );
 
   // Get all events that are within the radius of the timing points that are applicable for the day
-  const matchingEvents = getDb(context).$with("matching_events").as(
-    getDb(context)
-      .select({
-        timing_point_id: Schema.TimingPoints.id,
-        order: Schema.TimingPoints.order,
-        event_id: dailyEvents.id,
-        timestamp: dailyEvents.timestamp,
-      })
-      .from(Schema.TimingPoints)
-      .innerJoin(dailyEvents, sql`1`)
-      .where(
-        and(
-          sql`EXISTS (
+  const matchingEvents = getDb(context)
+    .$with("matching_events")
+    .as(
+      getDb(context)
+        .select({
+          timing_point_id: Schema.TimingPoints.id,
+          order: Schema.TimingPoints.order,
+          event_id: dailyEvents.id,
+          timestamp: dailyEvents.timestamp,
+        })
+        .from(Schema.TimingPoints)
+        .innerJoin(dailyEvents, sql`1`)
+        .where(
+          and(
+            sql`EXISTS (
             SELECT 1
             FROM json_each(${Schema.TimingPoints.applicableDates})
             WHERE value = ${urlDate}
           )`,
-          sql`(${6371000 * 2} * ASIN(MIN(1.0, SQRT(
+            sql`(${6371000 * 2} * ASIN(MIN(1.0, SQRT(
             SIN((${dailyEvents.event_latitude} - ${
               Schema.TimingPoints.latitude
             }) * 0.00872664626) *
@@ -103,52 +104,56 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
               Schema.TimingPoints.longitude
             }) * 0.00872664626)
           )))) <= ${Schema.TimingPoints.radius}`,
+          ),
         ),
-      ),
-  );
+    );
 
-  const rankedEvents = getDb(context).$with("ranked_events").as(
-    getDb(context)
-      .select({
-        timing_point_id: matchingEvents.timing_point_id,
-        order: matchingEvents.order,
-        event_id: matchingEvents.event_id,
-        timestamp: matchingEvents.timestamp,
-        row_number_asc:
-          sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id} ORDER BY ${matchingEvents.timestamp} ASC)`.as(
-            "row_number_asc",
-          ),
-        row_number_desc:
-          sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id} ORDER BY ${matchingEvents.timestamp} DESC)`.as(
-            "row_number_desc",
-          ),
-        event_count:
-          sql<number>`COUNT(*) OVER(PARTITION BY ${matchingEvents.timing_point_id})`.as(
-            "event_count",
-          ),
-      })
-      .from(matchingEvents),
-  );
+  const rankedEvents = getDb(context)
+    .$with("ranked_events")
+    .as(
+      getDb(context)
+        .select({
+          timing_point_id: matchingEvents.timing_point_id,
+          order: matchingEvents.order,
+          event_id: matchingEvents.event_id,
+          timestamp: matchingEvents.timestamp,
+          row_number_asc:
+            sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id} ORDER BY ${matchingEvents.timestamp} ASC)`.as(
+              "row_number_asc",
+            ),
+          row_number_desc:
+            sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id} ORDER BY ${matchingEvents.timestamp} DESC)`.as(
+              "row_number_desc",
+            ),
+          event_count:
+            sql<number>`COUNT(*) OVER(PARTITION BY ${matchingEvents.timing_point_id})`.as(
+              "event_count",
+            ),
+        })
+        .from(matchingEvents),
+    );
 
   // Aggregate events per timing point (arrival/departure/passage only)
-  const aggregatedEvents = getDb(context).$with("aggregated_events").as(
-    getDb(context)
-      .select({
-        timing_point_id: rankedEvents.timing_point_id,
-        events:
-          sql<string>`json_group_array(json_object('id', ${rankedEvents.event_id}, 'timestamp', ${rankedEvents.timestamp}, 'type', CASE WHEN ${rankedEvents.event_count} = 1 THEN 'passage' WHEN ${rankedEvents.row_number_asc} = 1 THEN 'arrival' WHEN ${rankedEvents.row_number_desc} = 1 THEN 'departure' END))`.as(
-            "events",
+  const aggregatedEvents = getDb(context)
+    .$with("aggregated_events")
+    .as(
+      getDb(context)
+        .select({
+          timing_point_id: rankedEvents.timing_point_id,
+          events:
+            sql<string>`json_group_array(json_object('id', ${rankedEvents.event_id}, 'timestamp', ${rankedEvents.timestamp}, 'type', CASE WHEN ${rankedEvents.event_count} = 1 THEN 'passage' WHEN ${rankedEvents.row_number_asc} = 1 THEN 'arrival' WHEN ${rankedEvents.row_number_desc} = 1 THEN 'departure' END))`.as(
+              "events",
+            ),
+        })
+        .from(rankedEvents)
+        .where(
+          or(
+            eq(rankedEvents.row_number_asc, 1),
+            eq(rankedEvents.row_number_desc, 1),
           ),
-      })
-      .from(rankedEvents)
-      .where(
-        or(
-          eq(rankedEvents.row_number_asc, 1),
-          eq(rankedEvents.row_number_desc, 1),
-        ),
-      )
-      .groupBy(rankedEvents.timing_point_id),
-  );
+        )
+        .groupBy(rankedEvents.timing_point_id),
+    );
 
   // Return all applicable timing points; include empty events where none matched
   const timingPointsWithEvents = await getDb(context)

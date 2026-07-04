@@ -11,7 +11,7 @@ export default [
   route("upload-flespi.json", "./routes/api/flespiUpload.ts"),
   route("upload.json", "./routes/api/appUpload.ts"),
   ...prefix(":password", [index("./routes/passwordDateSelector.tsx")]),
-  ...prefix(":password/:date", [
+  route(":password/:date", "./routes/protectedLayout.tsx", [
     route("table/:cursor?", "./routes/table.tsx"),
     route("timings", "./routes/timingPoints.tsx"),
     route("timingsHistoric", "./routes/timingPointsHistoricComparison.tsx"),
@@ -19,7 +19,7 @@ export default [
     route("export.gpx", "./routes/downloadGPX.ts"),
     index("./routes/map.tsx"),
   ]),
-  ...prefix("admin", [
+  route("admin", "./routes/admin/layout.tsx", [
     index("./routes/admin/index.tsx"),
     route("passwords", "./routes/admin/passwords.tsx"),
     route("data", "./routes/admin/data.tsx"),

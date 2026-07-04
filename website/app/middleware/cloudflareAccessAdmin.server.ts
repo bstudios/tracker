@@ -1,11 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
-
-/**
- * Verify that the request is authorized to access the admin routes via Cloudflare Access.
- */
-
-const isAdminPath = (pathname: string) =>
-  pathname === "/admin" || pathname.startsWith("/admin/");
+import type { MiddlewareFunction } from "react-router";
+import { cloudflareContext } from "~/routeContext";
 
 const isLocalDevelopmentRequest = (request: Request) => {
   const { hostname } = new URL(request.url);
@@ -16,7 +11,10 @@ const isLocalDevelopmentRequest = (request: Request) => {
   );
 };
 
-const jwksByTeamDomain = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+const jwksByTeamDomain = new Map<
+  string,
+  ReturnType<typeof createRemoteJWKSet>
+>();
 
 const getJwks = (teamDomain: string) => {
   const existingJwks = jwksByTeamDomain.get(teamDomain);
@@ -25,34 +23,30 @@ const getJwks = (teamDomain: string) => {
   }
 
   const createdJwks = createRemoteJWKSet(
-    new URL(`https://${teamDomain}/cdn-cgi/access/certs`)
+    new URL(`https://${teamDomain}/cdn-cgi/access/certs`),
   );
   jwksByTeamDomain.set(teamDomain, createdJwks);
   return createdJwks;
 };
 
-export const enforceCloudflareAccessOnAdminRoutes = async (
-  request: Request,
-  env: Env
-) => {
-  const { pathname } = new URL(request.url);
-  if (!isAdminPath(pathname)) {
-    return null;
+export const cloudflareAccessAdminMiddleware: MiddlewareFunction<
+  Response
+> = async ({ request, context }) => {
+  if (isLocalDevelopmentRequest(request)) {
+    return;
   }
 
-  if (isLocalDevelopmentRequest(request)) {
-    return null;
-  }
+  const { env } = context.get(cloudflareContext);
 
   if (!env.CLOUDFLARE_ACCESS_POLICY_AUD || !env.CLOUDFLARE_ACCESS_TEAM_DOMAIN) {
     console.warn("Missing Cloudflare Access required audience or team domain");
-    return new Response("Missing Cloudflare Access config", { status: 500 });
+    throw new Response("Missing Cloudflare Access config", { status: 500 });
   }
 
   const token = request.headers.get("cf-access-jwt-assertion");
   if (!token) {
     console.warn("Missing required Cloudflare Access JWT");
-    return new Response("Unauthorized", { status: 401 });
+    throw new Response("Unauthorized", { status: 401 });
   }
 
   try {
@@ -60,10 +54,9 @@ export const enforceCloudflareAccessOnAdminRoutes = async (
       issuer: `https://${env.CLOUDFLARE_ACCESS_TEAM_DOMAIN}`,
       audience: env.CLOUDFLARE_ACCESS_POLICY_AUD,
     });
-    return null;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.warn(`Invalid cloudflare access token: ${message}`);
-    return new Response("Unauthorized", { status: 401 });
+    throw new Response("Unauthorized", { status: 401 });
   }
 };

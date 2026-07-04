@@ -1,4 +1,4 @@
-import { getDb } from "~/routeContext";
+import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import {
   Button,
   Card,
@@ -16,24 +16,15 @@ import { and, asc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
 import { AnalysisMap } from "~/components/AnalysisMap/AnalysisMap";
-import { ensurePasswordAccess } from "~/passwordAccess.server";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/analysis";
 
 export const meta: MetaFunction = () => {
-  return [{ title: "Rally Analysis" }];
+  return [{ title: "Analysis" }];
 };
 
-export async function loader({ context, params, request }: Route.LoaderArgs) {
-  if (!params.password) {
-    throw new Response("Missing password", { status: 400 });
-  }
-
-  const { refDate, urlDate, password } = await ensurePasswordAccess({
-    password: params.password,
-    dateParam: params.date,
-    request,
-  });
+export async function loader({ context }: Route.LoaderArgs) {
+  const { refDate, urlDate, password } = getPasswordRouteAccess(context);
 
   const events = await getDb(context)
     .select({
@@ -327,7 +318,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <Button component={Link} to={backToMapHref} variant="light">
               Back to live map
             </Button>
-            <Title order={1}>Rally Analysis</Title>
+            <Title order={1}>Analysis</Title>
           </Group>
           <Text c="dimmed">{loaderData.urlDate}</Text>
         </Group>
