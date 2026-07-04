@@ -1,8 +1,7 @@
 import { Center, Stack, Title } from "@mantine/core";
-import { DatePicker } from "@mantine/dates";
 import { and, desc, gte, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
-import { redirect, useNavigate, type MetaFunction } from "react-router";
+import { Link, redirect, type MetaFunction } from "react-router";
 import { ensurePasswordAccess } from "~/passwordAccess.server";
 import { LiveMap } from "~/components/LiveMap/LiveMap";
 import * as Schema from "~/database/schema.d";
@@ -18,11 +17,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   }
 
   const { refDate, urlDate, password } = await ensurePasswordAccess({
-    db: context.db,
     password: params.password,
     dateParam: params.date,
     request,
-    env: context.cloudflare.env,
   });
 
   const events = await context.db
@@ -35,8 +32,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     .where(
       and(
         gte(Schema.Events.timestamp, refDate.toMillis()),
-        lte(Schema.Events.timestamp, refDate.toMillis() + 86400000) // 24 hours
-      )
+        lte(Schema.Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
+      ),
     );
 
   const timingPoints = await context.db
@@ -65,38 +62,61 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 }
 
 export default function Page({ loaderData }: Route.ComponentProps) {
-  const navigate = useNavigate();
   if (loaderData.events.length === 0) {
     return (
       <Center>
         <Stack>
           <Title order={1} py="xl" px="xl">
-            No data received for {" "}
+            No data received for{" "}
             {loaderData.date
               ? DateTime.fromISO(loaderData.date).toFormat("yyyy-MM-dd")
-              : undefined}{" "}yet
+              : undefined}{" "}
+            yet
           </Title>
         </Stack>
       </Center>
     );
   }
   return (
-    <LiveMap
-      zoom={13}
-      pins={loaderData.events
-        .filter(
-          (event) =>
-            "latitude" in event.data.location &&
-            "longitude" in event.data.location
-        )
-        .map((event) => ({
-          latitude: event.data.location.latitude,
-          longitude: event.data.location.longitude,
-          timestamp: event.timestamp,
-        }))}
-      timingPoints={loaderData.timingPoints}
-      urlDate={loaderData.urlDate}
-      password={loaderData.password}
-    />
+    <>
+      <LiveMap
+        zoom={13}
+        pins={loaderData.events
+          .filter(
+            (event) =>
+              "latitude" in event.data.location &&
+              "longitude" in event.data.location,
+          )
+          .map((event) => ({
+            latitude: event.data.location.latitude,
+            longitude: event.data.location.longitude,
+            timestamp: event.timestamp,
+          }))}
+        timingPoints={loaderData.timingPoints}
+        urlDate={loaderData.urlDate}
+        password={loaderData.password}
+      />
+      <Link
+        to={`/${loaderData.password}/${loaderData.urlDate}/analysis`}
+        style={{
+          position: "fixed",
+          top: 12,
+          right: 12,
+          zIndex: 2000,
+        }}
+      >
+        <Title
+          order={4}
+          c="pink"
+          style={{
+            background: "rgba(255,255,255,0.85)",
+            padding: "8px 12px",
+            borderRadius: 999,
+          }}
+        >
+          Analysis
+        </Title>
+      </Link>
+    </>
   );
 }

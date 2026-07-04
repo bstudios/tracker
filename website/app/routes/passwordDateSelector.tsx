@@ -15,31 +15,34 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   }
 
   const accessConfig = await findPasswordAccessWithRateLimit({
-    db: context.db,
     password: params.password,
     request,
-    env: context.cloudflare.env,
   });
   if (!accessConfig) {
     throw redirect("/?error=invalid-password");
   }
 
-  if (accessConfig.allowedDates !== null && accessConfig.allowedDates.length === 1) {
-    throw redirect(`/${encodeURIComponent(accessConfig.password)}/${accessConfig.allowedDates[0]}`);
+  if (
+    accessConfig.allowedDates !== null &&
+    accessConfig.allowedDates.length === 1
+  ) {
+    throw redirect(
+      `/${encodeURIComponent(accessConfig.password)}/${accessConfig.allowedDates[0]}`,
+    );
   }
 
   const availableDateRows = await context.db
     .select({
       date: sql<string>`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`.as(
-        "date"
+        "date",
       ),
     })
     .from(Schema.Events)
     .groupBy(
-      sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`
+      sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`,
     )
     .orderBy(
-      sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch') DESC`
+      sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch') DESC`,
     );
 
   const availableDates =

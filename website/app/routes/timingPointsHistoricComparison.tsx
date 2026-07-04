@@ -13,11 +13,9 @@ export const meta: MetaFunction = () => {
 
 export async function loader({ context, request, params }: Route.LoaderArgs) {
   const { urlDate, password } = await ensurePasswordAccess({
-    db: context.db,
     password: params.password,
     dateParam: params.date,
     request,
-    env: context.cloudflare.env,
   });
 
   // Select timing points that are applicable on the chosen date
@@ -37,8 +35,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
         sql`EXISTS (
           SELECT 1 FROM json_each(${Schema.TimingPoints.applicableDates})
           WHERE value = ${urlDate}
-        )`
-      )
+        )`,
+      ),
   );
 
   // Derive event_date from timestamp; keep only events that fall on applicable dates for the timing point
@@ -52,17 +50,17 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
         longitude: selectedTimingPoints.longitude,
         radius: selectedTimingPoints.radius,
         date: sql<string>`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`.as(
-          "date"
+          "date",
         ),
         event_id: Schema.Events.id,
         timestamp: Schema.Events.timestamp,
         event_latitude:
           sql<number>`json_extract(${Schema.Events.data}, '$.location.latitude')`.as(
-            "event_latitude"
+            "event_latitude",
           ),
         event_longitude:
           sql<number>`json_extract(${Schema.Events.data}, '$.location.longitude')`.as(
-            "event_longitude"
+            "event_longitude",
           ),
       })
       .from(selectedTimingPoints)
@@ -71,8 +69,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
         sql`EXISTS (
           SELECT 1 FROM json_each(${selectedTimingPoints.applicableDates})
           WHERE value = strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')
-        )`
-      )
+        )`,
+      ),
   );
 
   // Filter events that are within the timing point radius for that date
@@ -90,21 +88,21 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
       .where(
         sql`(${6371000 * 2} * ASIN(MIN(1.0, SQRT(
           SIN((${dateEvents.event_latitude} - ${
-          dateEvents.latitude
-        }) * 0.00872664626) *
+            dateEvents.latitude
+          }) * 0.00872664626) *
           SIN((${dateEvents.event_latitude} - ${
-          dateEvents.latitude
-        }) * 0.00872664626) +
+            dateEvents.latitude
+          }) * 0.00872664626) +
           COS(${dateEvents.latitude} * 0.01745329252) *
           COS(${dateEvents.event_latitude} * 0.01745329252) *
           SIN((${dateEvents.event_longitude} - ${
-          dateEvents.longitude
-        }) * 0.00872664626) *
+            dateEvents.longitude
+          }) * 0.00872664626) *
           SIN((${dateEvents.event_longitude} - ${
-          dateEvents.longitude
-        }) * 0.00872664626)
-        )))) <= ${dateEvents.radius}`
-      )
+            dateEvents.longitude
+          }) * 0.00872664626)
+        )))) <= ${dateEvents.radius}`,
+      ),
   );
 
   // Rank events per timing_point/date to determine arrival/departure
@@ -119,18 +117,18 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
         timestamp: matchingEvents.timestamp,
         row_number_asc:
           sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id}, ${matchingEvents.date} ORDER BY ${matchingEvents.timestamp} ASC)`.as(
-            "row_number_asc"
+            "row_number_asc",
           ),
         row_number_desc:
           sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id}, ${matchingEvents.date} ORDER BY ${matchingEvents.timestamp} DESC)`.as(
-            "row_number_desc"
+            "row_number_desc",
           ),
         event_count:
           sql<number>`COUNT(*) OVER(PARTITION BY ${matchingEvents.timing_point_id}, ${matchingEvents.date})`.as(
-            "event_count"
+            "event_count",
           ),
       })
-      .from(matchingEvents)
+      .from(matchingEvents),
   );
 
   // For each timing_point/date, keep only arrival/departure/passage and aggregate
@@ -143,21 +141,21 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
       date: rankedEvents.date,
       events:
         sql<string>`json_group_array(json_object('id', ${rankedEvents.event_id}, 'timestamp', ${rankedEvents.timestamp}, 'type', CASE WHEN ${rankedEvents.event_count} = 1 THEN 'passage' WHEN ${rankedEvents.row_number_asc} = 1 THEN 'arrival' WHEN ${rankedEvents.row_number_desc} = 1 THEN 'departure' END))`.as(
-          "events"
+          "events",
         ),
     })
     .from(rankedEvents)
     .where(
       or(
         eq(rankedEvents.row_number_asc, 1),
-        eq(rankedEvents.row_number_desc, 1)
-      )
+        eq(rankedEvents.row_number_desc, 1),
+      ),
     )
     .groupBy(
       rankedEvents.timing_point_id,
       rankedEvents.name,
       rankedEvents.order,
-      sql`${rankedEvents.date}`
+      sql`${rankedEvents.date}`,
     )
     .orderBy(asc(rankedEvents.order), asc(rankedEvents.date));
 
@@ -175,7 +173,7 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
 
   // Pre-compute date columns and grouped rows server-side
   const dates = Array.from(
-    new Set((timingPointsByDate as { date: string }[]).map((r) => r.date))
+    new Set((timingPointsByDate as { date: string }[]).map((r) => r.date)),
   ).sort();
 
   const grouped: Record<
@@ -322,10 +320,10 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                       ];
                     }
                     const arrivalEvent = events.find(
-                      (e) => e.type === "arrival"
+                      (e) => e.type === "arrival",
                     );
                     const departureEvent = events.find(
-                      (e) => e.type === "departure"
+                      (e) => e.type === "departure",
                     );
                     if (!arrivalEvent || !departureEvent) {
                       return [
@@ -366,7 +364,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                     ];
                   })}
                 </Table.Tr>
-              )
+              ),
             )}
           </Table.Tbody>
         </Table>

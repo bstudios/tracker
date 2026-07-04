@@ -41,23 +41,25 @@ export async function action({ context, request }: Route.ActionArgs) {
   try {
     password = parsePasswordInput(rawPassword);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Invalid password.";
+    const message =
+      error instanceof Error ? error.message : "Invalid password.";
     return { error: message };
   }
 
   const accessConfig = await findPasswordAccessWithRateLimit({
-    db: context.db,
     password,
     request,
-    env: context.cloudflare.env,
   });
   if (!accessConfig) {
     return { error: "Invalid password." };
   }
 
-  if (accessConfig.allowedDates !== null && accessConfig.allowedDates.length === 1) {
+  if (
+    accessConfig.allowedDates !== null &&
+    accessConfig.allowedDates.length === 1
+  ) {
     return redirect(
-      `/${encodeURIComponent(accessConfig.password)}/${encodeURIComponent(accessConfig.allowedDates[0])}`
+      `/${encodeURIComponent(accessConfig.password)}/${encodeURIComponent(accessConfig.allowedDates[0])}`,
     );
   }
 

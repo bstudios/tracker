@@ -21,11 +21,9 @@ const pageLength = 50;
 export async function loader({ context, request, params }: Route.LoaderArgs) {
   const cursor = params.cursor;
   const { refDate, urlDate, password } = await ensurePasswordAccess({
-    db: context.db,
     password: params.password,
     dateParam: params.date,
     request,
-    env: context.cloudflare.env,
   });
 
   const events = await context.db
@@ -40,8 +38,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
       and(
         gte(Events.timestamp, refDate.toMillis()),
         lte(Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
-        cursor ? lt(Events.id, parseInt(cursor)) : undefined
-      )
+        cursor ? lt(Events.id, parseInt(cursor)) : undefined,
+      ),
     )
     .limit(pageLength);
 
@@ -51,8 +49,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
     .where(
       and(
         gte(Events.timestamp, refDate.toMillis()),
-        lte(Events.timestamp, refDate.toMillis() + 86400000) // 24 hours
-      )
+        lte(Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
+      ),
     );
 
   return {

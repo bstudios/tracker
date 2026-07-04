@@ -1,25 +1,28 @@
+import { env } from "cloudflare:workers";
 import { sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { redirect } from "react-router";
+import { db as getDb } from "~/d1client.server";
 import { AccessPasswords } from "~/database/schema/AccessPasswords";
-import type { Route as MapRoute } from "./routes/+types/map";
-
-type TrackerDb = MapRoute.LoaderArgs["context"]["db"];
 const PASSWORD_PATTERN = /^[a-z0-9-]+$/;
+const trackerDb = getDb(env.DB);
 
 const getRateLimitKey = (request: Request, prefix: string) => {
   const connectingIp = request.headers.get("cf-connecting-ip") ?? "unknown";
   return `${prefix}:${connectingIp}`;
 };
 
-const enforceFailedPasswordRateLimit = async (request: Request, env: Env) => {
+const enforceFailedPasswordRateLimit = async (request: Request) => {
   const { success } = await env.TRACKER_PASSWORD_LOGIN_RATE_LIMITER.limit({
     key: getRateLimitKey(request, "password-access"),
   });
   if (!success) {
-    throw new Response("Too many incorrect password attempts. Please try again shortly.", {
-      status: 429,
-    });
+    throw new Response(
+      "Too many incorrect password attempts. Please try again shortly.",
+      {
+        status: 429,
+      },
+    );
   }
 };
 
@@ -31,7 +34,8 @@ const getReferenceDate = (dateParam?: string) => {
   return safeDate.set({ hour: 0, minute: 0, second: 0, millisecond: 0 });
 };
 
-const normalisePassword = (rawPassword: string) => rawPassword.trim().toLowerCase();
+const normalisePassword = (rawPassword: string) =>
+  rawPassword.trim().toLowerCase();
 
 const isValidPassword = (password: string) => PASSWORD_PATTERN.test(password);
 
@@ -42,7 +46,7 @@ export const parsePasswordInput = (rawPassword: string) => {
   }
   if (!isValidPassword(normalisedPassword)) {
     throw new Error(
-      "Password can only include simple latin letters, numbers, and hyphens."
+      "Password can only include simple latin letters, numbers, and hyphens.",
     );
   }
   return normalisedPassword;
@@ -67,7 +71,7 @@ export const parseAllowedDatesInput = (rawAllowedDates: string) => {
 
   if (normalisedValue.includes(",")) {
     throw new Error(
-      "Only one allowed date is supported. Leave empty for unrestricted access."
+      "Only one allowed date is supported. Leave empty for unrestricted access.",
     );
   }
 
@@ -98,13 +102,13 @@ const normaliseAllowedDates = (allowedDates: string[] | null) => {
   return [cleanedDates[0]];
 };
 
-export async function findPasswordAccess(db: TrackerDb, password: string) {
+export async function findPasswordAccess(password: string) {
   const normalisedPassword = parsePasswordLookup(password);
   if (!normalisedPassword) {
     return null;
   }
 
-  const [accessConfig] = await db
+  const [accessConfig] = await trackerDb
     .select({
       id: AccessPasswords.id,
       password: AccessPasswords.password,
@@ -126,43 +130,40 @@ export async function findPasswordAccess(db: TrackerDb, password: string) {
 }
 
 export async function findPasswordAccessWithRateLimit(args: {
-  db: TrackerDb;
   password: string;
   request: Request;
-  env: Env;
 }) {
-  const accessConfig = await findPasswordAccess(args.db, args.password);
+  const accessConfig = await findPasswordAccess(args.password);
   if (accessConfig) {
     return accessConfig;
   }
 
-  await enforceFailedPasswordRateLimit(args.request, args.env);
+  await enforceFailedPasswordRateLimit(args.request);
   return null;
 }
 
 export async function ensurePasswordAccess(args: {
-  db: TrackerDb;
   password: string | undefined;
   dateParam?: string;
   request: Request;
-  env: Env;
 }) {
   if (!args.password) {
     throw redirect("/");
   }
 
   const accessConfig = await findPasswordAccessWithRateLimit({
-    db: args.db,
     password: args.password,
     request: args.request,
-    env: args.env,
   });
   if (!accessConfig) {
     throw redirect("/?error=invalid-password");
   }
 
   if (!args.dateParam) {
-    if (accessConfig.allowedDates !== null && accessConfig.allowedDates.length === 1) {
+    if (
+      accessConfig.allowedDates !== null &&
+      accessConfig.allowedDates.length === 1
+    ) {
       const allowedDate = accessConfig.allowedDates[0];
       const refDate = getReferenceDate(allowedDate);
       return {
@@ -183,7 +184,7 @@ export async function ensurePasswordAccess(args: {
     !accessConfig.allowedDates.includes(urlDate)
   ) {
     throw redirect(
-      `/?error=date-not-allowed&date=${encodeURIComponent(urlDate)}`
+      `/?error=date-not-allowed&date=${encodeURIComponent(urlDate)}`,
     );
   }
 

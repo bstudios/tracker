@@ -6,11 +6,9 @@ import type { Route } from "./+types/downloadGPX";
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
   const { refDate, urlDate } = await ensurePasswordAccess({
-    db: context.db,
     password: params.password,
     dateParam: params.date,
     request,
-    env: context.cloudflare.env,
   });
 
   const stream = new ReadableStream({
@@ -29,7 +27,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
             <time>${refDate.toISO()}</time>
           </metadata><trk><name>James Bithell Tracker ${
             params.date
-          }</name><type>other</type><trkseg>`)
+          }</name><type>other</type><trkseg>`),
       );
 
       try {
@@ -46,8 +44,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
             .where(
               and(
                 gte(Events.timestamp, refDate.toMillis()),
-                lte(Events.timestamp, refDate.toMillis() + 86400000) // 24 hours
-              )
+                lte(Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
+              ),
             );
           if (databaseResult.length === 0) {
             break; // No more rows
@@ -67,7 +65,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
                       <ele>${databaseResult.data.location.altitude}</ele>
                       <speed>${databaseResult.data.location.speed}</speed>
                       <time>${DateTime.fromMillis(
-                        databaseResult.timestamp
+                        databaseResult.timestamp,
                       ).toISO()}</time>
                     </trkpt>`;
           });
@@ -91,7 +89,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   headers.set("Content-Type", "application/gpx+xml");
   headers.set(
     "Content-Disposition",
-    `attachment; filename="${urlDate}-tracker-export.gpx"`
+    `attachment; filename="${urlDate}-tracker-export.gpx"`,
   );
   headers.set("Cache-Control", "no-cache");
   return new Response(stream, {

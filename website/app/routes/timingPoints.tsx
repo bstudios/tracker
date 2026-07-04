@@ -20,11 +20,9 @@ export const meta: MetaFunction = () => {
 
 export async function loader({ context, request, params }: Route.LoaderArgs) {
   const { refDate, urlDate, password } = await ensurePasswordAccess({
-    db: context.db,
     password: params.password,
     dateParam: params.date,
     request,
-    env: context.cloudflare.env,
   });
 
   const startOfDay = refDate.startOf("day").toMillis();
@@ -47,8 +45,8 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
         sql`EXISTS (
           SELECT 1 FROM json_each(${Schema.TimingPoints.applicableDates})
           WHERE value = ${urlDate}
-        )`
-      )
+        )`,
+      ),
   );
 
   // Get all events for the day
@@ -59,15 +57,15 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
         timestamp: Schema.Events.timestamp,
         event_latitude:
           sql<number>`json_extract(data, '$.location.latitude')`.as(
-            "event_latitude"
+            "event_latitude",
           ),
         event_longitude:
           sql<number>`json_extract(data, '$.location.longitude')`.as(
-            "event_longitude"
+            "event_longitude",
           ),
       })
       .from(Schema.Events)
-      .where(between(Schema.Events.timestamp, startOfDay, endOfDay))
+      .where(between(Schema.Events.timestamp, startOfDay, endOfDay)),
   );
 
   // Get all events that are within the radius of the timing points that are applicable for the day
@@ -90,22 +88,22 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
           )`,
           sql`(${6371000 * 2} * ASIN(MIN(1.0, SQRT(
             SIN((${dailyEvents.event_latitude} - ${
-            Schema.TimingPoints.latitude
-          }) * 0.00872664626) *
+              Schema.TimingPoints.latitude
+            }) * 0.00872664626) *
             SIN((${dailyEvents.event_latitude} - ${
-            Schema.TimingPoints.latitude
-          }) * 0.00872664626) +
+              Schema.TimingPoints.latitude
+            }) * 0.00872664626) +
             COS(${Schema.TimingPoints.latitude} * 0.01745329252) *
             COS(${dailyEvents.event_latitude} * 0.01745329252) *
             SIN((${dailyEvents.event_longitude} - ${
-            Schema.TimingPoints.longitude
-          }) * 0.00872664626) *
+              Schema.TimingPoints.longitude
+            }) * 0.00872664626) *
             SIN((${dailyEvents.event_longitude} - ${
-            Schema.TimingPoints.longitude
-          }) * 0.00872664626)
-          )))) <= ${Schema.TimingPoints.radius}`
-        )
-      )
+              Schema.TimingPoints.longitude
+            }) * 0.00872664626)
+          )))) <= ${Schema.TimingPoints.radius}`,
+        ),
+      ),
   );
 
   const rankedEvents = context.db.$with("ranked_events").as(
@@ -117,18 +115,18 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
         timestamp: matchingEvents.timestamp,
         row_number_asc:
           sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id} ORDER BY ${matchingEvents.timestamp} ASC)`.as(
-            "row_number_asc"
+            "row_number_asc",
           ),
         row_number_desc:
           sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id} ORDER BY ${matchingEvents.timestamp} DESC)`.as(
-            "row_number_desc"
+            "row_number_desc",
           ),
         event_count:
           sql<number>`COUNT(*) OVER(PARTITION BY ${matchingEvents.timing_point_id})`.as(
-            "event_count"
+            "event_count",
           ),
       })
-      .from(matchingEvents)
+      .from(matchingEvents),
   );
 
   // Aggregate events per timing point (arrival/departure/passage only)
@@ -138,17 +136,17 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
         timing_point_id: rankedEvents.timing_point_id,
         events:
           sql<string>`json_group_array(json_object('id', ${rankedEvents.event_id}, 'timestamp', ${rankedEvents.timestamp}, 'type', CASE WHEN ${rankedEvents.event_count} = 1 THEN 'passage' WHEN ${rankedEvents.row_number_asc} = 1 THEN 'arrival' WHEN ${rankedEvents.row_number_desc} = 1 THEN 'departure' END))`.as(
-            "events"
+            "events",
           ),
       })
       .from(rankedEvents)
       .where(
         or(
           eq(rankedEvents.row_number_asc, 1),
-          eq(rankedEvents.row_number_desc, 1)
-        )
+          eq(rankedEvents.row_number_desc, 1),
+        ),
       )
-      .groupBy(rankedEvents.timing_point_id)
+      .groupBy(rankedEvents.timing_point_id),
   );
 
   // Return all applicable timing points; include empty events where none matched
@@ -158,7 +156,7 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
       dailyEvents,
       matchingEvents,
       rankedEvents,
-      aggregatedEvents
+      aggregatedEvents,
     )
     .select({
       timing_point_id: selectedTimingPoints.id,
@@ -169,13 +167,13 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
       latitude: selectedTimingPoints.latitude,
       longitude: selectedTimingPoints.longitude,
       events: sql<string>`coalesce(${aggregatedEvents.events}, '[]')`.as(
-        "events"
+        "events",
       ),
     })
     .from(selectedTimingPoints)
     .leftJoin(
       aggregatedEvents,
-      eq(selectedTimingPoints.id, aggregatedEvents.timing_point_id)
+      eq(selectedTimingPoints.id, aggregatedEvents.timing_point_id),
     )
     .orderBy(asc(selectedTimingPoints.order));
 
@@ -276,10 +274,10 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                     <>
                       {(() => {
                         const arrivalEvent = events.find(
-                          (event) => event.type === "arrival"
+                          (event) => event.type === "arrival",
                         );
                         const departureEvent = events.find(
-                          (event) => event.type === "departure"
+                          (event) => event.type === "departure",
                         );
                         if (!arrivalEvent || !departureEvent) {
                           return <Table.Td colSpan={2}></Table.Td>;
@@ -293,7 +291,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                             <Table.Td colSpan={2}>
                               {DateTime.fromSeconds(
                                 arrivalEvent.timestamp / 1000,
-                                { zone: "Europe/London" }
+                                { zone: "Europe/London" },
                               ).toLocaleString(DateTime.TIME_24_SIMPLE)}
                             </Table.Td>
                           ); // If the difference between the arrival and departure times is less than 2 minutes, then just show the arrival time
@@ -302,22 +300,22 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                             <Table.Td>
                               {DateTime.fromSeconds(
                                 arrivalEvent.timestamp / 1000,
-                                { zone: "Europe/London" }
+                                { zone: "Europe/London" },
                               ).toLocaleString(DateTime.TIME_24_SIMPLE)}
                             </Table.Td>
                             <Table.Td>
                               {DateTime.fromSeconds(
                                 departureEvent.timestamp / 1000,
-                                { zone: "Europe/London" }
+                                { zone: "Europe/London" },
                               ).toLocaleString(DateTime.TIME_24_SIMPLE)}{" "}
                               (
                               {DateTime.fromSeconds(
                                 departureEvent.timestamp / 1000,
-                                { zone: "Europe/London" }
+                                { zone: "Europe/London" },
                               ).toRelative({
                                 base: DateTime.fromSeconds(
                                   arrivalEvent.timestamp / 1000,
-                                  { zone: "Europe/London" }
+                                  { zone: "Europe/London" },
                                 ),
                                 style: "short",
                               })}
