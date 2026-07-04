@@ -25,7 +25,7 @@ export type AnalysisRouteSegment = {
   id: string;
   timestamp: number;
   timeDeltaSeconds: number;
-  speedKph: number;
+  speedMph: number;
   isStop: boolean;
   positions: [number, number][];
 };
@@ -39,18 +39,24 @@ const mapIcon = (children: ReactNode) =>
     className: "myDivIcon",
   });
 
-const speedColor = (speedKph: number) => {
-  if (speedKph < 1) return "#7c3aed";
-  if (speedKph < 20) return "#2563eb";
-  if (speedKph < 50) return "#16a34a";
-  if (speedKph < 80) return "#f59e0b";
+const speedColor = (speedMph: number) => {
+  if (speedMph < 1) return "#7c3aed";
+  if (speedMph < 12) return "#2563eb";
+  if (speedMph < 31) return "#16a34a";
+  if (speedMph < 50) return "#f59e0b";
   return "#dc2626";
 };
 
 export function AnalysisMap(props: {
   points: AnalysisRoutePoint[];
   segments: AnalysisRouteSegment[];
+  highlightedPointId?: number | null;
 }) {
+  const highlightedPoint =
+    typeof props.highlightedPointId === "number"
+      ? props.points.find((point) => point.id === props.highlightedPointId)
+      : null;
+
   const routeCenter = props.points[0]
     ? ([props.points[0].latitude, props.points[0].longitude] as [
         number,
@@ -77,34 +83,30 @@ export function AnalysisMap(props: {
             key={segment.id}
             positions={segment.positions}
             pathOptions={{
-              color: speedColor(segment.speedKph),
+              color: speedColor(segment.speedMph),
               weight: 5,
             }}
           />
         ))}
-        {props.points.map((point, index) => (
+        {highlightedPoint ? (
           <Marker
-            key={`${point.id}-${index}`}
-            position={[point.latitude, point.longitude]}
+            key={`hover-${highlightedPoint.id}`}
+            position={[highlightedPoint.latitude, highlightedPoint.longitude]}
             icon={mapIcon(
-              <ThemeIcon radius="xl" size="sm" color="pink">
-                {index === 0
-                  ? "S"
-                  : index === props.points.length - 1
-                    ? "F"
-                    : "•"}
+              <ThemeIcon radius="xl" size="sm" color="red">
+                X
               </ThemeIcon>,
             )}
           >
             <Popup>
-              {DateTime.fromSeconds(point.timestamp / 1000, {
+              {DateTime.fromSeconds(highlightedPoint.timestamp / 1000, {
                 zone: "Europe/London",
               }).toLocaleString(DateTime.DATETIME_MED)}
               <br />
-              {(point.speed * 3.6).toFixed(1)} km/h
+              {(highlightedPoint.speed * 2.2369362921).toFixed(1)} mph
             </Popup>
           </Marker>
-        ))}
+        ) : null}
       </MapContainer>
     </div>
   );

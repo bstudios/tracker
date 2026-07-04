@@ -9,15 +9,49 @@ import {
   Stack,
   Text,
   Title,
-  Table,
 } from "@mantine/core";
 import { LineChart } from "@mantine/charts";
-import { and, asc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { and, asc, gte, lte } from "drizzle-orm";
 import { DateTime } from "luxon";
+import { useState } from "react";
 import { Link, type MetaFunction } from "react-router";
 import { AnalysisMap } from "~/components/AnalysisMap/AnalysisMap";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/analysis";
+
+const MPS_TO_MPH = 2.2369362921;
+
+const chooseTickIntervalMinutes = (startMillis: number, endMillis: number) => {
+  const durationMinutes = Math.max(1, (endMillis - startMillis) / 60000);
+
+  if (durationMinutes <= 360) return 15;
+  if (durationMinutes <= 720) return 30;
+  return 60;
+};
+
+const buildRoundedTickTimestamps = (startMillis: number, endMillis: number) => {
+  const intervalMinutes = chooseTickIntervalMinutes(startMillis, endMillis);
+  let cursor = DateTime.fromMillis(startMillis, {
+    zone: "Europe/London",
+  }).startOf("hour");
+
+  const minuteRemainder = cursor.minute % intervalMinutes;
+  if (minuteRemainder !== 0) {
+    cursor = cursor.plus({ minutes: intervalMinutes - minuteRemainder });
+  }
+
+  if (cursor.toMillis() < startMillis) {
+    cursor = cursor.plus({ minutes: intervalMinutes });
+  }
+
+  const ticks: number[] = [];
+  while (cursor.toMillis() <= endMillis) {
+    ticks.push(cursor.toMillis());
+    cursor = cursor.plus({ minutes: intervalMinutes });
+  }
+
+  return ticks;
+};
 
 export const meta: MetaFunction = () => {
   return [{ title: "Analysis" }];
@@ -57,14 +91,14 @@ export async function loader({ context }: Route.LoaderArgs) {
   const segments = eventsWithLocation.slice(1).map((point, index) => {
     const previousPoint = eventsWithLocation[index];
     const timeDeltaSeconds = (point.timestamp - previousPoint.timestamp) / 1000;
-    const speedKph = point.speed * 3.6;
+    const speedMph = point.speed * MPS_TO_MPH;
     const isStop = point.speed < 0.5;
 
     return {
       id: `${previousPoint.id}-${point.id}`,
       timestamp: point.timestamp,
       timeDeltaSeconds,
-      speedKph,
+      speedMph,
       isStop,
       positions: [
         [previousPoint.latitude, previousPoint.longitude],
@@ -73,242 +107,90 @@ export async function loader({ context }: Route.LoaderArgs) {
     };
   });
 
-  const averageSpeedKph =
+  const averageSpeedMph =
     eventsWithLocation.length === 0
       ? 0
-      : eventsWithLocation.reduce((sum, point) => sum + point.speed * 3.6, 0) /
-        eventsWithLocation.length;
+      : eventsWithLocation.reduce(
+          (sum, point) => sum + point.speed * MPS_TO_MPH,
+          0,
+        ) / eventsWithLocation.length;
 
-  const maxSpeedKph = eventsWithLocation.reduce(
-    (max, point) => Math.max(max, point.speed * 3.6),
+  const maxSpeedMph = eventsWithLocation.reduce(
+    (max, point) => Math.max(max, point.speed * MPS_TO_MPH),
     0,
   );
 
   const stopCount = segments.filter((segment) => segment.isStop).length;
   const slowestSegment = segments.reduce(
     (slowest, segment) =>
-      !slowest || segment.speedKph < slowest.speedKph ? segment : slowest,
+      !slowest || segment.speedMph < slowest.speedMph ? segment : slowest,
     null as (typeof segments)[number] | null,
   );
 
   const chartData = eventsWithLocation.map((point) => ({
-    time: DateTime.fromSeconds(point.timestamp / 1000, {
-      zone: "Europe/London",
-    }).toFormat("HH:mm"),
-    speedKph: Number((point.speed * 3.6).toFixed(2)),
+    pointId: point.id,
+    timestampMillis: point.timestamp,
+    speedMph: Number((point.speed * MPS_TO_MPH).toFixed(2)),
   }));
 
-  const startOfDay = refDate.startOf("day").toMillis();
-  const endOfDay = refDate.endOf("day").toMillis();
-
-  const selectedTimingPoints = getDb(context)
-    .$with("selected_timing_points")
-    .as(
-      getDb(context)
-        .select({
-          id: Schema.TimingPoints.id,
-          order: Schema.TimingPoints.order,
-          name: Schema.TimingPoints.name,
-          icon: Schema.TimingPoints.icon,
-          googleLink: Schema.TimingPoints.googleLink,
-          latitude: Schema.TimingPoints.latitude,
-          longitude: Schema.TimingPoints.longitude,
-          radius: Schema.TimingPoints.radius,
-        })
-        .from(Schema.TimingPoints)
-        .where(
-          sql`EXISTS (
-          SELECT 1 FROM json_each(${Schema.TimingPoints.applicableDates})
-          WHERE value = ${urlDate}
-        )`,
-        ),
-    );
-
-  const dailyEvents = getDb(context)
-    .$with("daily_events")
-    .as(
-      getDb(context)
-        .select({
-          id: Schema.Events.id,
-          timestamp: Schema.Events.timestamp,
-          event_latitude:
-            sql<number>`json_extract(data, '$.location.latitude')`.as(
-              "event_latitude",
-            ),
-          event_longitude:
-            sql<number>`json_extract(data, '$.location.longitude')`.as(
-              "event_longitude",
-            ),
-        })
-        .from(Schema.Events)
-        .where(
-          and(
-            gte(Schema.Events.timestamp, startOfDay),
-            lte(Schema.Events.timestamp, endOfDay),
-          ),
-        ),
-    );
-
-  const matchingTimingEvents = getDb(context)
-    .$with("matching_timing_events")
-    .as(
-      getDb(context)
-        .select({
-          timing_point_id: Schema.TimingPoints.id,
-          order: Schema.TimingPoints.order,
-          name: Schema.TimingPoints.name,
-          event_id: dailyEvents.id,
-          timestamp: dailyEvents.timestamp,
-        })
-        .from(Schema.TimingPoints)
-        .innerJoin(dailyEvents, sql`1`)
-        .where(
-          and(
-            sql`EXISTS (
-            SELECT 1 FROM json_each(${Schema.TimingPoints.applicableDates})
-            WHERE value = ${urlDate}
-          )`,
-            sql`(${6371000 * 2} * ASIN(MIN(1.0, SQRT(
-            SIN((${dailyEvents.event_latitude} - ${Schema.TimingPoints.latitude}) * 0.00872664626) *
-            SIN((${dailyEvents.event_latitude} - ${Schema.TimingPoints.latitude}) * 0.00872664626) +
-            COS(${Schema.TimingPoints.latitude} * 0.01745329252) *
-            COS(${dailyEvents.event_latitude} * 0.01745329252) *
-            SIN((${dailyEvents.event_longitude} - ${Schema.TimingPoints.longitude}) * 0.00872664626) *
-            SIN((${dailyEvents.event_longitude} - ${Schema.TimingPoints.longitude}) * 0.00872664626)
-          )))) <= ${Schema.TimingPoints.radius}`,
-          ),
-        ),
-    );
-
-  const rankedTimingEvents = getDb(context)
-    .$with("ranked_timing_events")
-    .as(
-      getDb(context)
-        .select({
-          timing_point_id: matchingTimingEvents.timing_point_id,
-          order: matchingTimingEvents.order,
-          name: matchingTimingEvents.name,
-          event_id: matchingTimingEvents.event_id,
-          timestamp: matchingTimingEvents.timestamp,
-          row_number_asc:
-            sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingTimingEvents.timing_point_id} ORDER BY ${matchingTimingEvents.timestamp} ASC)`.as(
-              "row_number_asc",
-            ),
-          row_number_desc:
-            sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingTimingEvents.timing_point_id} ORDER BY ${matchingTimingEvents.timestamp} DESC)`.as(
-              "row_number_desc",
-            ),
-          event_count:
-            sql<number>`COUNT(*) OVER(PARTITION BY ${matchingTimingEvents.timing_point_id})`.as(
-              "event_count",
-            ),
-        })
-        .from(matchingTimingEvents),
-    );
-
-  const aggregatedTimingEvents = getDb(context)
-    .$with("aggregated_timing_events")
-    .as(
-      getDb(context)
-        .select({
-          timing_point_id: rankedTimingEvents.timing_point_id,
-          events:
-            sql<string>`json_group_array(json_object('id', ${rankedTimingEvents.event_id}, 'timestamp', ${rankedTimingEvents.timestamp}, 'type', CASE WHEN ${rankedTimingEvents.event_count} = 1 THEN 'passage' WHEN ${rankedTimingEvents.row_number_asc} = 1 THEN 'arrival' WHEN ${rankedTimingEvents.row_number_desc} = 1 THEN 'departure' END))`.as(
-              "events",
-            ),
-        })
-        .from(rankedTimingEvents)
-        .where(
-          or(
-            eq(rankedTimingEvents.row_number_asc, 1),
-            eq(rankedTimingEvents.row_number_desc, 1),
-          ),
+  const roundedTickTimestamps =
+    chartData.length > 1
+      ? buildRoundedTickTimestamps(
+          chartData[0].timestampMillis,
+          chartData[chartData.length - 1].timestampMillis,
         )
-        .groupBy(rankedTimingEvents.timing_point_id),
-    );
-
-  const timingPoints = await getDb(context)
-    .with(
-      selectedTimingPoints,
-      dailyEvents,
-      matchingTimingEvents,
-      rankedTimingEvents,
-      aggregatedTimingEvents,
-    )
-    .select({
-      timing_point_id: selectedTimingPoints.id,
-      name: selectedTimingPoints.name,
-      order: selectedTimingPoints.order,
-      icon: selectedTimingPoints.icon,
-      googleLink: selectedTimingPoints.googleLink,
-      latitude: selectedTimingPoints.latitude,
-      longitude: selectedTimingPoints.longitude,
-      events: sql<string>`coalesce(${aggregatedTimingEvents.events}, '[]')`.as(
-        "events",
-      ),
-    })
-    .from(selectedTimingPoints)
-    .leftJoin(
-      aggregatedTimingEvents,
-      eq(selectedTimingPoints.id, aggregatedTimingEvents.timing_point_id),
-    )
-    .orderBy(asc(selectedTimingPoints.order));
-
-  const timingPointSummary = timingPoints.map((timingPoint) => {
-    const events = JSON.parse(timingPoint.events) as {
-      id: number;
-      timestamp: number;
-      type: "passage" | "arrival" | "departure";
-    }[];
-    const arrivalEvent = events.find((event) => event.type === "arrival");
-    const departureEvent = events.find((event) => event.type === "departure");
-    const passageEvent = events.find((event) => event.type === "passage");
-
-    return {
-      id: timingPoint.timing_point_id,
-      name: timingPoint.name,
-      googleLink: timingPoint.googleLink,
-      latitude: timingPoint.latitude,
-      longitude: timingPoint.longitude,
-      eventCount: events.length,
-      arrival: arrivalEvent?.timestamp ?? null,
-      departure: departureEvent?.timestamp ?? null,
-      passage: passageEvent?.timestamp ?? null,
-      dwellSeconds:
-        arrivalEvent && departureEvent
-          ? Math.max(
-              0,
-              (departureEvent.timestamp - arrivalEvent.timestamp) / 1000,
-            )
-          : null,
-    };
-  });
+      : [];
 
   return {
     date: refDate.toISO(),
     urlDate,
     password,
     chartData,
+    roundedTickTimestamps,
     summary: {
       points: eventsWithLocation.length,
       segments: segments.length,
-      averageSpeedKph: Number(averageSpeedKph.toFixed(1)),
-      maxSpeedKph: Number(maxSpeedKph.toFixed(1)),
+      averageSpeedMph: Number(averageSpeedMph.toFixed(1)),
+      maxSpeedMph: Number(maxSpeedMph.toFixed(1)),
       stopCount,
-      slowestSegmentSpeedKph: slowestSegment
-        ? Number(slowestSegment.speedKph.toFixed(1))
+      slowestSegmentSpeedMph: slowestSegment
+        ? Number(slowestSegment.speedMph.toFixed(1))
         : null,
     },
     route: {
       points: eventsWithLocation,
       segments,
     },
-    timingPoints: timingPointSummary,
   };
 }
 
 export default function Page({ loaderData }: Route.ComponentProps) {
+  const [hoveredPointId, setHoveredPointId] = useState<number | null>(null);
   const backToMapHref = `/${loaderData.password}/${loaderData.urlDate}`;
+
+  const lineChartInteractionProps: {
+    onMouseMove: (event: unknown) => void;
+    onMouseLeave: () => void;
+  } = {
+    onMouseMove: (event) => {
+      const pointId =
+        typeof event === "object" &&
+        event !== null &&
+        "activePayload" in event &&
+        Array.isArray((event as { activePayload?: unknown }).activePayload)
+          ? ((
+              event as {
+                activePayload: Array<{ payload?: { pointId?: number } }>;
+              }
+            ).activePayload[0]?.payload?.pointId ?? null)
+          : null;
+
+      setHoveredPointId(pointId);
+    },
+    onMouseLeave: () => {
+      setHoveredPointId(null);
+    },
+  };
 
   return (
     <Container fluid p="md">
@@ -334,13 +216,13 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <Text c="dimmed" size="sm">
               Average speed
             </Text>
-            <Title order={3}>{loaderData.summary.averageSpeedKph} km/h</Title>
+            <Title order={3}>{loaderData.summary.averageSpeedMph} mph</Title>
           </Card>
           <Card withBorder>
             <Text c="dimmed" size="sm">
               Maximum speed
             </Text>
-            <Title order={3}>{loaderData.summary.maxSpeedKph} km/h</Title>
+            <Title order={3}>{loaderData.summary.maxSpeedMph} mph</Title>
           </Card>
           <Card withBorder>
             <Text c="dimmed" size="sm">
@@ -355,7 +237,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <Title order={3}>{loaderData.summary.segments}</Title>
             <Text c="dimmed" size="xs">
               Slowest segment:{" "}
-              {loaderData.summary.slowestSegmentSpeedKph ?? "n/a"} km/h
+              {loaderData.summary.slowestSegmentSpeedMph ?? "n/a"} mph
             </Text>
           </Card>
         </SimpleGrid>
@@ -382,9 +264,9 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <LineChart
               h={320}
               data={loaderData.chartData}
-              dataKey="time"
+              dataKey="timestampMillis"
               series={[
-                { name: "speedKph", color: "pink.6", label: "Speed (km/h)" },
+                { name: "speedMph", color: "pink.6", label: "Speed (mph)" },
               ]}
               curveType="linear"
               withDots={false}
@@ -393,6 +275,23 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               withXAxis
               withYAxis
               gridAxis="y"
+              xAxisProps={{
+                type: "number",
+                scale: "time",
+                domain: ["dataMin", "dataMax"],
+                ticks: loaderData.roundedTickTimestamps,
+                tickFormatter: (value: number) =>
+                  DateTime.fromMillis(value, {
+                    zone: "Europe/London",
+                  }).toFormat("HH:mm"),
+              }}
+              tooltipProps={{
+                labelFormatter: (value: number) =>
+                  DateTime.fromMillis(value, {
+                    zone: "Europe/London",
+                  }).toFormat("HH:mm:ss"),
+              }}
+              lineChartProps={lineChartInteractionProps}
             />
           )}
         </Card>
@@ -417,91 +316,86 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <AnalysisMap
               points={loaderData.route.points}
               segments={loaderData.route.segments}
+              highlightedPointId={hoveredPointId}
             />
           )}
         </Card>
 
         <Card withBorder>
           <Title order={2} mb="xs">
-            Next steps
+            Legend
           </Title>
-          <Text c="dimmed">
-            This page is the first split from the live map. The next slice can
-            move route coloring, replay, and timing-point comparisons here
-            without increasing the tracking page payload.
-          </Text>
-        </Card>
-
-        <Card withBorder>
-          <Group justify="space-between" align="center" mb="md">
-            <div>
-              <Title order={2}>Timing-point debrief</Title>
-              <Text c="dimmed" size="sm">
-                Arrival, passage, departure, and dwell-time summary for the
-                selected day.
-              </Text>
-            </div>
-          </Group>
-          {loaderData.timingPoints.length === 0 ? (
-            <Text c="dimmed">
-              No timing points were configured for this date.
+          <Stack gap="xs">
+            <Text c="dimmed" size="sm">
+              Route segments are colored by speed:
             </Text>
-          ) : (
-            <Table striped highlightOnHover stickyHeader stickyHeaderOffset={0}>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Location</Table.Th>
-                  <Table.Th>Arrived</Table.Th>
-                  <Table.Th>Departed</Table.Th>
-                  <Table.Th>Dwell</Table.Th>
-                  <Table.Th>Events</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {loaderData.timingPoints.map((timingPoint) => (
-                  <Table.Tr key={timingPoint.id}>
-                    <Table.Td>
-                      <Text>
-                        {timingPoint.googleLink ? (
-                          <Link to={timingPoint.googleLink} target="_blank">
-                            {timingPoint.name}
-                          </Link>
-                        ) : (
-                          timingPoint.name
-                        )}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {timingPoint.arrival
-                        ? DateTime.fromSeconds(timingPoint.arrival / 1000, {
-                            zone: "Europe/London",
-                          }).toLocaleString(DateTime.TIME_24_SIMPLE)
-                        : ""}
-                    </Table.Td>
-                    <Table.Td>
-                      {timingPoint.departure
-                        ? DateTime.fromSeconds(timingPoint.departure / 1000, {
-                            zone: "Europe/London",
-                          }).toLocaleString(DateTime.TIME_24_SIMPLE)
-                        : timingPoint.passage
-                          ? DateTime.fromSeconds(timingPoint.passage / 1000, {
-                              zone: "Europe/London",
-                            }).toLocaleString(DateTime.TIME_24_SIMPLE)
-                          : ""}
-                    </Table.Td>
-                    <Table.Td>
-                      {timingPoint.dwellSeconds === null
-                        ? ""
-                        : timingPoint.dwellSeconds < 120
-                          ? "under 2 min"
-                          : `${Math.round(timingPoint.dwellSeconds / 60)} min`}
-                    </Table.Td>
-                    <Table.Td>{timingPoint.eventCount}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          )}
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+              <Group gap="xs" wrap="nowrap">
+                <div
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 999,
+                    backgroundColor: "#7c3aed",
+                    flexShrink: 0,
+                  }}
+                />
+                <Text size="sm">Under 1 mph</Text>
+              </Group>
+              <Group gap="xs" wrap="nowrap">
+                <div
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 999,
+                    backgroundColor: "#2563eb",
+                    flexShrink: 0,
+                  }}
+                />
+                <Text size="sm">1 to 12 mph</Text>
+              </Group>
+              <Group gap="xs" wrap="nowrap">
+                <div
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 999,
+                    backgroundColor: "#16a34a",
+                    flexShrink: 0,
+                  }}
+                />
+                <Text size="sm">12 to 31 mph</Text>
+              </Group>
+              <Group gap="xs" wrap="nowrap">
+                <div
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 999,
+                    backgroundColor: "#f59e0b",
+                    flexShrink: 0,
+                  }}
+                />
+                <Text size="sm">31 to 50 mph</Text>
+              </Group>
+              <Group gap="xs" wrap="nowrap">
+                <div
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 999,
+                    backgroundColor: "#dc2626",
+                    flexShrink: 0,
+                  }}
+                />
+                <Text size="sm">Over 50 mph</Text>
+              </Group>
+            </SimpleGrid>
+            <Text c="dimmed" size="sm">
+              Hover over the speed chart to place the red X marker on the
+              corresponding map position.
+            </Text>
+          </Stack>
         </Card>
       </Stack>
     </Container>

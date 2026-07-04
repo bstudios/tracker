@@ -9,6 +9,7 @@ import {
 export function AnalysisMap(props: {
   points: AnalysisRoutePoint[];
   segments: AnalysisRouteSegment[];
+  highlightedPointId?: number | null;
 }) {
   return (
     <ClientOnly fallback={<Center h={420} />}>
