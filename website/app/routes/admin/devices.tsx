@@ -98,24 +98,37 @@ const ensureMatcherIsUnique = async (
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const devices = await getDb(context)
+  const db = getDb(context);
+  const passwordCounts = db
+    .select({
+      deviceId: AccessPasswords.deviceId,
+      passwordCount: sql<number>`count(*)`.as("password_count"),
+    })
+    .from(AccessPasswords)
+    .groupBy(AccessPasswords.deviceId)
+    .as("password_counts");
+
+  const eventCounts = db
+    .select({
+      deviceId: Events.deviceId,
+      eventCount: sql<number>`count(*)`.as("event_count"),
+    })
+    .from(Events)
+    .groupBy(Events.deviceId)
+    .as("event_counts");
+
+  const devices = await db
     .select({
       id: Devices.id,
       name: Devices.name,
       matchId: Devices.matchId,
       icon: Devices.icon,
-      passwordCount: sql<number>`(
-        SELECT COUNT(*)
-        FROM ${AccessPasswords}
-        WHERE ${AccessPasswords.deviceId} = ${Devices.id}
-      )`,
-      eventCount: sql<number>`(
-        SELECT COUNT(*)
-        FROM ${Events}
-        WHERE ${Events.deviceId} = ${Devices.id}
-      )`,
+      passwordCount: sql<number>`coalesce(${passwordCounts.passwordCount}, 0)`,
+      eventCount: sql<number>`coalesce(${eventCounts.eventCount}, 0)`,
     })
-    .from(Devices);
+    .from(Devices)
+    .leftJoin(passwordCounts, eq(passwordCounts.deviceId, Devices.id))
+    .leftJoin(eventCounts, eq(eventCounts.deviceId, Devices.id));
 
   return { devices };
 }
