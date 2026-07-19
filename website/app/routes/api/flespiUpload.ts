@@ -2,6 +2,7 @@ import { getDb } from "~/routeContext";
 import { data, redirect } from "react-router";
 import { z as zod } from "zod";
 import { Events } from "~/database/schema/Events";
+import type { JsonValue } from "~/database/schema/Events";
 import { Devices } from "~/database/schema/Devices";
 import { eq, inArray } from "drizzle-orm";
 import type { Route } from "./+types/flespiUpload";
@@ -47,6 +48,85 @@ const pickFirstValue = (source: Record<string, unknown>, keys: string[]) => {
   }
   return undefined;
 };
+
+const deleteValueForKey = (source: Record<string, unknown>, key: string) => {
+  const segments = key.split(".");
+  let current: unknown = source;
+
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    if (
+      typeof current !== "object" ||
+      current === null ||
+      Array.isArray(current)
+    ) {
+      return;
+    }
+
+    const record = current as Record<string, unknown>;
+    if (!(segments[i] in record)) return;
+    current = record[segments[i]];
+  }
+
+  if (
+    typeof current !== "object" ||
+    current === null ||
+    Array.isArray(current)
+  ) {
+    return;
+  }
+
+  const record = current as Record<string, unknown>;
+  delete record[segments[segments.length - 1]];
+};
+
+const pruneEmptyObjects = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(pruneEmptyObjects);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  const prunedEntries = Object.entries(record)
+    .map(([key, nestedValue]) => [key, pruneEmptyObjects(nestedValue)] as const)
+    .filter(([, nestedValue]) => {
+      if (nestedValue === undefined) return false;
+      if (typeof nestedValue !== "object" || nestedValue === null) return true;
+      if (Array.isArray(nestedValue)) return true;
+      return Object.keys(nestedValue).length > 0;
+    });
+
+  return Object.fromEntries(prunedEntries);
+};
+
+const knownMappedKeys = [
+  "timestamp",
+  "timestamp.unix",
+  "position.timestamp",
+  "position.latitude",
+  "latitude",
+  "lat",
+  "position.longitude",
+  "longitude",
+  "lon",
+  "position.altitude",
+  "altitude",
+  "position.speed",
+  "speed",
+  "position.direction",
+  "heading",
+  "course",
+  "position.accuracy",
+  "accuracy",
+  "position.hdop",
+  "hdop",
+  "battery.level",
+  "battery.percentage",
+  "battery.charging",
+  "battery.is_charging",
+] as const;
 
 const toMessages = (payload: unknown) => {
   if (Array.isArray(payload)) return payload;
@@ -94,6 +174,7 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
         altitudeAccuracy: null;
       };
       battery: { percentage: number; charging: boolean } | null;
+      other?: Record<string, JsonValue>;
     };
   }> = [];
 
@@ -261,6 +342,23 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
                 charging: normalized.data.batteryCharging,
               }
             : null,
+        other: (() => {
+          const otherFields = JSON.parse(
+            JSON.stringify(parsedMessage.data),
+          ) as Record<string, unknown>;
+
+          for (const key of knownMappedKeys) {
+            deleteValueForKey(otherFields, key);
+          }
+
+          const pruned = pruneEmptyObjects(otherFields) as Record<
+            string,
+            unknown
+          >;
+          return Object.keys(pruned).length > 0
+            ? (pruned as Record<string, JsonValue>)
+            : undefined;
+        })(),
       },
     });
   }
