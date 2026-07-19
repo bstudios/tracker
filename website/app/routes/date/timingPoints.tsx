@@ -12,7 +12,8 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { refDate, urlDate, password } = getPasswordRouteAccess(context);
+  const { refDate, urlDate, password, deviceId } =
+    getPasswordRouteAccess(context);
 
   const startOfDay = refDate.startOf("day").toMillis();
   const endOfDay = refDate.endOf("day").toMillis();
@@ -58,7 +59,12 @@ export async function loader({ context }: Route.LoaderArgs) {
             ),
         })
         .from(Schema.Events)
-        .where(between(Schema.Events.timestamp, startOfDay, endOfDay)),
+        .where(
+          and(
+            eq(Schema.Events.deviceId, deviceId),
+            between(Schema.Events.timestamp, startOfDay, endOfDay),
+          ),
+        ),
     );
 
   // Get all events that are within the radius of the timing points that are applicable for the day

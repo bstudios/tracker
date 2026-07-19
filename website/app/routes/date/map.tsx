@@ -1,6 +1,6 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Center, Stack, Title } from "@mantine/core";
-import { and, desc, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
 import { LiveMap } from "~/components/LiveMap/LiveMap";
@@ -12,7 +12,8 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { refDate, urlDate, password } = getPasswordRouteAccess(context);
+  const { refDate, urlDate, password, deviceId } =
+    getPasswordRouteAccess(context);
 
   const events = await getDb(context)
     .select({
@@ -23,6 +24,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     .orderBy(desc(Schema.Events.timestamp))
     .where(
       and(
+        eq(Schema.Events.deviceId, deviceId),
         gte(Schema.Events.timestamp, refDate.toMillis()),
         lte(Schema.Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
       ),

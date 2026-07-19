@@ -1,4 +1,4 @@
-import { and, gte, lte } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import {
   Button,
   Card,
@@ -19,12 +19,14 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { refDate, urlDate, password } = getPasswordRouteAccess(context);
+  const { refDate, urlDate, password, deviceId } =
+    getPasswordRouteAccess(context);
   const events = await getDb(context)
     .select({ id: Schema.Events.id })
     .from(Schema.Events)
     .where(
       and(
+        eq(Schema.Events.deviceId, deviceId),
         gte(Schema.Events.timestamp, refDate.toMillis()),
         lte(Schema.Events.timestamp, refDate.toMillis() + 86400000),
       ),

@@ -11,7 +11,7 @@ import {
   Title,
 } from "@mantine/core";
 import { AreaChart } from "@mantine/charts";
-import { and, asc, gte, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { memo, useEffect, useState } from "react";
 import { Link, type MetaFunction } from "react-router";
@@ -171,7 +171,8 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { refDate, urlDate, password } = getPasswordRouteAccess(context);
+  const { refDate, urlDate, password, deviceId } =
+    getPasswordRouteAccess(context);
 
   const db = getDb(context);
   const dayStart = refDate.startOf("day").toMillis();
@@ -194,6 +195,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       .from(Schema.Events)
       .where(
         and(
+          eq(Schema.Events.deviceId, deviceId),
           gte(Schema.Events.timestamp, dayStart),
           lte(Schema.Events.timestamp, dayEnd),
           sql`json_extract(${Schema.Events.data}, '$.location.latitude') IS NOT NULL`,

@@ -13,6 +13,7 @@ export const dbContext = createContext<DrizzleD1Database<typeof schema>>();
 export const passwordRouteAccessContext = createContext<{
   password: string;
   allowedDates: string[] | null;
+  deviceId: number;
   refDate: DateTime;
   urlDate: string;
 }>();

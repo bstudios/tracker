@@ -1,11 +1,11 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { and, asc, gte, lte } from "drizzle-orm";
+import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/downloadGPX";
 
 export async function loader({ context, params }: Route.LoaderArgs) {
-  const { refDate, urlDate } = getPasswordRouteAccess(context);
+  const { refDate, urlDate, deviceId } = getPasswordRouteAccess(context);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -39,6 +39,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
             .offset(cursor)
             .where(
               and(
+                eq(Events.deviceId, deviceId),
                 gte(Events.timestamp, refDate.toMillis()),
                 lte(Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
               ),

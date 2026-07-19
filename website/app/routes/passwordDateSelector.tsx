@@ -1,6 +1,6 @@
 import { getDb } from "~/routeContext";
 import { Button, Center, Stack, Title } from "@mantine/core";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { redirect, useNavigate, type MetaFunction } from "react-router";
 import { findPasswordAccessWithRateLimit } from "~/passwordAccess.server";
 import * as Schema from "~/database/schema.d";
@@ -39,6 +39,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
       ),
     })
     .from(Schema.Events)
+    .where(eq(Schema.Events.deviceId, accessConfig.deviceId))
     .groupBy(
       sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`,
     )

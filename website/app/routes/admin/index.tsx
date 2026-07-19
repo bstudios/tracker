@@ -30,6 +30,9 @@ export default function Page({ loaderData }: Route.ComponentProps) {
     <Container fluid p="md">
       <Title order={1}>Admin</Title>
       <Stack mt="md">
+        <Button component={Link} to="/admin/devices">
+          Device administration
+        </Button>
         <Button component={Link} to="/admin/passwords">
           Password administration
         </Button>

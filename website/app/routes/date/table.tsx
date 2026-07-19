@@ -1,7 +1,7 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Button, Container, Group, Table, Text, Title } from "@mantine/core";
 import { IconBrandApple, IconBrandGoogleMaps } from "@tabler/icons-react";
-import { and, desc, gte, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { useEffect, useState } from "react";
 import { Link, useFetcher, type MetaFunction } from "react-router";
@@ -15,7 +15,8 @@ export const meta: MetaFunction = () => {
 const pageLength = 50;
 export async function loader({ context, params }: Route.LoaderArgs) {
   const cursor = params.cursor;
-  const { refDate, urlDate, password } = getPasswordRouteAccess(context);
+  const { refDate, urlDate, password, deviceId } =
+    getPasswordRouteAccess(context);
 
   const events = await getDb(context)
     .select({
@@ -27,6 +28,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     .orderBy(desc(Events.id))
     .where(
       and(
+        eq(Events.deviceId, deviceId),
         gte(Events.timestamp, refDate.toMillis()),
         lte(Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
         cursor ? lt(Events.id, parseInt(cursor)) : undefined,
@@ -39,6 +41,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     .from(Events)
     .where(
       and(
+        eq(Events.deviceId, deviceId),
         gte(Events.timestamp, refDate.toMillis()),
         lte(Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
       ),

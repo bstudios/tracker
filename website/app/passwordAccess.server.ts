@@ -113,6 +113,7 @@ export async function findPasswordAccess(password: string) {
       id: AccessPasswords.id,
       password: AccessPasswords.password,
       allowedDates: AccessPasswords.allowedDates,
+      deviceId: AccessPasswords.deviceId,
     })
     .from(AccessPasswords)
     .where(sql`lower(${AccessPasswords.password}) = ${normalisedPassword}`)
@@ -169,6 +170,7 @@ export async function ensurePasswordAccess(args: {
       return {
         password: accessConfig.password,
         allowedDates: accessConfig.allowedDates,
+        deviceId: accessConfig.deviceId,
         refDate,
         urlDate: refDate.toFormat("yyyy-MM-dd"),
       };
@@ -191,6 +193,7 @@ export async function ensurePasswordAccess(args: {
   return {
     password: accessConfig.password,
     allowedDates: accessConfig.allowedDates,
+    deviceId: accessConfig.deviceId,
     refDate,
     urlDate,
   };
