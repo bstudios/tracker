@@ -2,6 +2,8 @@ import { getDb } from "~/routeContext";
 import { data, redirect } from "react-router";
 import { z as zod } from "zod";
 import { Events } from "~/database/schema/Events";
+import { Devices } from "~/database/schema/Devices";
+import { eq, inArray } from "drizzle-orm";
 import type { Route } from "./+types/flespiUpload";
 
 const rawMessageSchema = zod.record(zod.string(), zod.unknown());
@@ -16,6 +18,8 @@ const normalizedMessageSchema = zod.object({
   accuracy: zod.coerce.number().min(0).optional(),
   batteryPercentage: zod.coerce.number().min(0).max(100).optional(),
   batteryCharging: zod.coerce.boolean().optional(),
+  identifier: zod.string().min(1),
+  deviceTypeId: zod.coerce.string().min(1).optional(),
 });
 
 const INSERT_CHUNK_SIZE = 200;
@@ -74,8 +78,11 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
     return data({ message: "No messages provided" }, 400);
   }
 
+  const db = getDb(context);
+
   const eventValues: Array<{
     timestamp: number;
+    deviceId: number;
     data: {
       location: {
         accuracy: number;
@@ -89,6 +96,35 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
       battery: { percentage: number; charging: boolean } | null;
     };
   }> = [];
+
+  const identifiers = new Set<string>();
+  for (const message of messages) {
+    const parsedMessage = rawMessageSchema.safeParse(message);
+    if (!parsedMessage.success) continue;
+
+    const identifier = pickFirstValue(parsedMessage.data, [
+      "ident",
+      "device.ident",
+      "device.id",
+      "deviceId",
+    ]);
+    if (identifier !== undefined && identifier !== null) {
+      identifiers.add(String(identifier));
+    }
+  }
+
+  if (identifiers.size === 0) {
+    return data({ message: "No device identifier provided in messages" }, 400);
+  }
+
+  const deviceRows = await db
+    .select({ id: Devices.id, matchId: Devices.matchId })
+    .from(Devices)
+    .where(inArray(Devices.matchId, Array.from(identifiers)));
+
+  const matchIdToDeviceId = new Map<string, number>(
+    deviceRows.map((row) => [row.matchId, row.id]),
+  );
 
   for (const [index, message] of messages.entries()) {
     const parsedMessage = rawMessageSchema.safeParse(message);
@@ -136,6 +172,16 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
         "battery.charging",
         "battery.is_charging",
       ]),
+      identifier: pickFirstValue(parsedMessage.data, [
+        "ident",
+        "device.ident",
+        "device.id",
+        "deviceId",
+      ]),
+      deviceTypeId: pickFirstValue(parsedMessage.data, [
+        "device.type.id",
+        "device.typeId",
+      ]),
     });
 
     if (!normalized.success) {
@@ -153,8 +199,50 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
         ? normalized.data.timestamp * 1000
         : normalized.data.timestamp;
 
+    let deviceId = matchIdToDeviceId.get(normalized.data.identifier);
+    if (deviceId === undefined) {
+      const newDeviceName =
+        normalized.data.deviceTypeId ?? normalized.data.identifier;
+
+      try {
+        const createdDevice = await db
+          .insert(Devices)
+          .values({
+            name: newDeviceName,
+            matchId: normalized.data.identifier,
+          })
+          .returning({ id: Devices.id });
+
+        if (createdDevice.length > 0) {
+          deviceId = createdDevice[0].id;
+          matchIdToDeviceId.set(normalized.data.identifier, deviceId);
+        }
+      } catch {
+        const existingDevice = await db
+          .select({ id: Devices.id })
+          .from(Devices)
+          .where(eq(Devices.matchId, normalized.data.identifier));
+
+        if (existingDevice.length > 0) {
+          deviceId = existingDevice[0].id;
+          matchIdToDeviceId.set(normalized.data.identifier, deviceId);
+        }
+      }
+
+      if (deviceId === undefined) {
+        return data(
+          {
+            message: `Failed to create or resolve device at index ${index}`,
+            identifier: normalized.data.identifier,
+          },
+          500,
+        );
+      }
+    }
+
     eventValues.push({
       timestamp: timestampMs,
+      deviceId,
       data: {
         location: {
           accuracy: normalized.data.accuracy ?? 0,
@@ -179,7 +267,7 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
 
   for (let i = 0; i < eventValues.length; i += INSERT_CHUNK_SIZE) {
     const chunk = eventValues.slice(i, i + INSERT_CHUNK_SIZE);
-    const insertTimeSeries = await getDb(context).insert(Events).values(chunk);
+    const insertTimeSeries = await db.insert(Events).values(chunk);
     if (insertTimeSeries.error) {
       return data(
         {

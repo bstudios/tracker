@@ -39,21 +39,24 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
   const validated = await validator.safeParseAsync(payload);
   if (!validated.success) return data({ message: validated.error }, 400);
 
-  const insertTimeSeries = await getDb(context).insert(Events).values({
-    timestamp: validated.data.location.timestamp,
-    data: {
-      location: {
-        accuracy: validated.data.location.coords.accuracy,
-        longitude: validated.data.location.coords.longitude,
-        altitude: validated.data.location.coords.altitude,
-        heading: validated.data.location.coords.heading,
-        latitude: validated.data.location.coords.latitude,
-        altitudeAccuracy: validated.data.location.coords.altitudeAccuracy,
-        speed: validated.data.location.coords.speed,
+  const insertTimeSeries = await getDb(context)
+    .insert(Events)
+    .values({
+      timestamp: validated.data.location.timestamp,
+      deviceId: 1, // TODO: This should be the device ID that is associated with the API key that was used to authenticate this request.
+      data: {
+        location: {
+          accuracy: validated.data.location.coords.accuracy,
+          longitude: validated.data.location.coords.longitude,
+          altitude: validated.data.location.coords.altitude,
+          heading: validated.data.location.coords.heading,
+          latitude: validated.data.location.coords.latitude,
+          altitudeAccuracy: validated.data.location.coords.altitudeAccuracy,
+          speed: validated.data.location.coords.speed,
+        },
+        battery: validated.data.battery,
       },
-      battery: validated.data.battery,
-    },
-  });
+    });
   if (insertTimeSeries.error)
     return data({ message: insertTimeSeries.error }, 500);
   return data({}, 200);

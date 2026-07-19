@@ -30,33 +30,36 @@ export const loader = async ({ context, request }: Route.LoaderArgs) => {
   console.log(
     `Request received, method ${
       request.method
-    }, parameters ${url.searchParams.toString()}, body ${await request.text()}`
+    }, parameters ${url.searchParams.toString()}, body ${await request.text()}`,
   );
   const parsedRequestParameters = await getRequestParameters.safeParseAsync(
-    Object.fromEntries(url.searchParams)
+    Object.fromEntries(url.searchParams),
   );
   if (parsedRequestParameters.success) {
-    const insertTimeSeries = await getDb(context).insert(Events).values({
-      timestamp: parsedRequestParameters.data.fixTime,
-      data: {
-        location: {
-          accuracy: parsedRequestParameters.data.accuracy ?? 0,
-          longitude: parsedRequestParameters.data.longitude,
-          altitude: parsedRequestParameters.data.altitude ?? 0,
-          heading: parsedRequestParameters.data.course ?? 0,
-          latitude: parsedRequestParameters.data.latitude,
-          speed: parsedRequestParameters.data.speed ?? 0,
-          altitudeAccuracy: null,
+    const insertTimeSeries = await getDb(context)
+      .insert(Events)
+      .values({
+        timestamp: parsedRequestParameters.data.fixTime,
+        deviceId: 1, // TODO: This should be the device ID that is associated with the API key that was used to authenticate this request.
+        data: {
+          location: {
+            accuracy: parsedRequestParameters.data.accuracy ?? 0,
+            longitude: parsedRequestParameters.data.longitude,
+            altitude: parsedRequestParameters.data.altitude ?? 0,
+            heading: parsedRequestParameters.data.course ?? 0,
+            latitude: parsedRequestParameters.data.latitude,
+            speed: parsedRequestParameters.data.speed ?? 0,
+            altitudeAccuracy: null,
+          },
+          battery: null,
         },
-        battery: null,
-      },
-    });
+      });
     if (insertTimeSeries.error)
       return data({ message: insertTimeSeries.error }, 500);
     return data({}, 200);
   } else {
     console.log(
-      `Errors from zod: ${JSON.stringify(parsedRequestParameters.error)}`
+      `Errors from zod: ${JSON.stringify(parsedRequestParameters.error)}`,
     );
     console.log(`Data: ${JSON.stringify(parsedRequestParameters.data)}`);
     return data({ message: "Invalid request" }, 400);

@@ -1,4 +1,5 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { Devices } from "./Devices";
 
 export const Events = sqliteTable("events", {
   id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
@@ -20,4 +21,7 @@ export const Events = sqliteTable("events", {
       } | null;
     }>()
     .notNull(),
+  deviceId: integer("device_id", { mode: "number" })
+    .notNull()
+    .references(() => Devices.id),
 });
