@@ -3,6 +3,7 @@ import { ClientOnly } from "remix-utils/client-only";
 import { Map } from "./Map.client";
 export interface MapProps {
   zoom: number;
+  deviceIcon: string | null;
   pins: {
     latitude: number;
     longitude: number;

@@ -1,7 +1,21 @@
 import { getDb } from "~/routeContext";
-import { Button, Container, Group, Table, Text, TextInput, Title } from "@mantine/core";
+import {
+  Button,
+  Container,
+  Group,
+  Select,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { eq, sql } from "drizzle-orm";
 import { Form, type MetaFunction } from "react-router";
+import {
+  DEFAULT_DEVICE_ICON,
+  DEVICE_ICON_OPTIONS,
+  isDeviceIconName,
+} from "~/constants/deviceIcons";
 import { AccessPasswords } from "~/database/schema/AccessPasswords";
 import { Events } from "~/database/schema/Events";
 import { Devices } from "~/database/schema/Devices";
@@ -25,6 +39,14 @@ const parseMatcherInput = (rawMatcher: string) => {
     throw new Error("Matcher is required");
   }
   return matcher;
+};
+
+const parseDeviceIconInput = (rawIcon: FormDataEntryValue | null) => {
+  const icon = typeof rawIcon === "string" ? rawIcon : "";
+  if (!isDeviceIconName(icon)) {
+    throw new Error("Invalid icon");
+  }
+  return icon;
 };
 
 const parseDeviceIdInput = (rawId: FormDataEntryValue | null) => {
@@ -81,6 +103,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       id: Devices.id,
       name: Devices.name,
       matchId: Devices.matchId,
+      icon: Devices.icon,
       passwordCount: sql<number>`(
         SELECT COUNT(*)
         FROM ${AccessPasswords}
@@ -103,27 +126,36 @@ export async function action({ context, request }: Route.ActionArgs) {
   const intent = formData.get("intent");
 
   if (intent === "create") {
-    const name = parseDeviceNameInput((formData.get("name") as string | null) ?? "");
+    const name = parseDeviceNameInput(
+      (formData.get("name") as string | null) ?? "",
+    );
     const matchId = parseMatcherInput(
       (formData.get("matchId") as string | null) ?? "",
     );
+    const icon = parseDeviceIconInput(formData.get("icon"));
     await ensureNameIsUnique(db, name);
     await ensureMatcherIsUnique(db, matchId);
 
-    await db.insert(Devices).values({ name, matchId });
+    await db.insert(Devices).values({ name, matchId, icon });
     return { success: true };
   }
 
   if (intent === "update") {
     const id = parseDeviceIdInput(formData.get("id"));
-    const name = parseDeviceNameInput((formData.get("name") as string | null) ?? "");
+    const name = parseDeviceNameInput(
+      (formData.get("name") as string | null) ?? "",
+    );
     const matchId = parseMatcherInput(
       (formData.get("matchId") as string | null) ?? "",
     );
+    const icon = parseDeviceIconInput(formData.get("icon"));
     await ensureNameIsUnique(db, name, id);
     await ensureMatcherIsUnique(db, matchId, id);
 
-    await db.update(Devices).set({ name, matchId }).where(eq(Devices.id, id));
+    await db
+      .update(Devices)
+      .set({ name, matchId, icon })
+      .where(eq(Devices.id, id));
     return { success: true };
   }
 
@@ -166,7 +198,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
     <Container fluid p="md">
       <Title order={1}>Device Administration</Title>
       <Text c="dimmed" mb="md">
-        Manage device names and matchers used to connect incoming webhook data.
+        Manage device names, matchers, and map icons used to connect and display
+        incoming webhook data.
       </Text>
 
       <Form method="post">
@@ -174,6 +207,17 @@ export default function Page({ loaderData }: Route.ComponentProps) {
         <Group align="end">
           <TextInput label="Device name" name="name" required />
           <TextInput label="Matcher" name="matchId" required />
+          <Select
+            label="Map icon"
+            name="icon"
+            data={DEVICE_ICON_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.label,
+            }))}
+            defaultValue={DEFAULT_DEVICE_ICON}
+            allowDeselect={false}
+            required
+          />
           <Button type="submit">Create</Button>
         </Group>
       </Form>
@@ -182,6 +226,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Name</Table.Th>
+            <Table.Th>Icon</Table.Th>
             <Table.Th>Matcher</Table.Th>
             <Table.Th>Passwords</Table.Th>
             <Table.Th>Events</Table.Th>
@@ -190,7 +235,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
         </Table.Thead>
         <Table.Tbody>
           {loaderData.devices.map((device) => {
-            const hasAssociations = device.passwordCount > 0 || device.eventCount > 0;
+            const hasAssociations =
+              device.passwordCount > 0 || device.eventCount > 0;
 
             return (
               <Table.Tr key={device.id}>
@@ -204,6 +250,20 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                       required
                     />
                   </Form>
+                </Table.Td>
+                <Table.Td>
+                  <Select
+                    aria-label="Map icon"
+                    form={`device-row-${device.id}`}
+                    name="icon"
+                    data={DEVICE_ICON_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
+                    defaultValue={device.icon ?? DEFAULT_DEVICE_ICON}
+                    allowDeselect={false}
+                    required
+                  />
                 </Table.Td>
                 <Table.Td>
                   <TextInput

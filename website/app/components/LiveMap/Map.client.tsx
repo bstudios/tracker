@@ -1,17 +1,27 @@
 import { Button, Group, MantineProvider, Text, ThemeIcon } from "@mantine/core";
 import { useViewportSize } from "@mantine/hooks";
 import {
+  IconBike,
   IconBeerFilled,
   IconBrandApple,
+  IconBus,
   IconBrandGoogleMaps,
   IconCar,
   IconCoffee,
   IconCompass,
   IconCurrentLocation,
   IconGasStationFilled,
+  IconHelicopter,
+  IconMotorbike,
+  IconPlane,
   IconPinned,
   IconRefresh,
+  IconSailboat,
+  IconShip,
+  IconSpeedboat,
+  IconTrain,
   IconTrainFilled,
+  IconTruck,
 } from "@tabler/icons-react";
 import { DivIcon, divIcon, LatLng } from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -31,6 +41,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import { Link, useRevalidator } from "react-router";
+import { DEFAULT_DEVICE_ICON } from "~/constants/deviceIcons";
 import { theme } from "~/root";
 import {
   createRestrictedViewportBounds,
@@ -52,6 +63,35 @@ const tablerMapIcon = (children: React.ReactNode) =>
     iconSize: [20, 20],
     className: "myDivIcon",
   });
+
+const getDeviceIcon = (iconName: string | null) => {
+  switch (iconName ?? DEFAULT_DEVICE_ICON) {
+    case "IconTruck":
+      return <IconTruck style={{ width: "70%", height: "70%" }} />;
+    case "IconBike":
+      return <IconBike style={{ width: "70%", height: "70%" }} />;
+    case "IconMotorbike":
+      return <IconMotorbike style={{ width: "70%", height: "70%" }} />;
+    case "IconBus":
+      return <IconBus style={{ width: "70%", height: "70%" }} />;
+    case "IconTrain":
+      return <IconTrain style={{ width: "70%", height: "70%" }} />;
+    case "IconSpeedboat":
+      return <IconSpeedboat style={{ width: "70%", height: "70%" }} />;
+    case "IconSailboat":
+      return <IconSailboat style={{ width: "70%", height: "70%" }} />;
+    case "IconShip":
+      return <IconShip style={{ width: "70%", height: "70%" }} />;
+    case "IconPlane":
+      return <IconPlane style={{ width: "70%", height: "70%" }} />;
+    case "IconHelicopter":
+      return <IconHelicopter style={{ width: "70%", height: "70%" }} />;
+    case "IconCar":
+    default:
+      return <IconCar style={{ width: "70%", height: "70%" }} />;
+  }
+};
+
 const ReCentreButton = (props: {
   lat: number;
   lon: number;
@@ -256,7 +296,7 @@ export const Map = (props: MapProps) => {
             zIndexOffset={1000}
             icon={tablerMapIcon(
               <ThemeIcon radius="md" size="lg">
-                <IconCar style={{ width: "70%", height: "70%" }} />
+                {getDeviceIcon(props.deviceIcon)}
               </ThemeIcon>,
             )}
           >

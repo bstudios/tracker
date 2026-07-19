@@ -15,6 +15,12 @@ export async function loader({ context }: Route.LoaderArgs) {
   const { refDate, urlDate, password, deviceId } =
     getPasswordRouteAccess(context);
 
+  const [device] = await getDb(context)
+    .select({ icon: Schema.Devices.icon })
+    .from(Schema.Devices)
+    .where(eq(Schema.Devices.id, deviceId))
+    .limit(1);
+
   const events = await getDb(context)
     .select({
       timestamp: Schema.Events.timestamp,
@@ -52,6 +58,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     urlDate,
     timingPoints,
     password,
+    deviceIcon: device?.icon ?? null,
   };
 }
 
@@ -86,6 +93,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
           timestamp: event.timestamp,
         }))}
       timingPoints={loaderData.timingPoints}
+      deviceIcon={loaderData.deviceIcon}
       urlDate={loaderData.urlDate}
       password={loaderData.password}
     />
