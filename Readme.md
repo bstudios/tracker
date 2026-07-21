@@ -21,10 +21,25 @@ The logic for each is quite different, however as they share so many components 
 
 The Expo app is a simple app in the app/ folder which uploads location data to the server. It is designed to be run on a device with a GPS chip, such as a phone or tablet.
 
-### SinoTrack Devices
+### SinoTrack Devices
 
-[ST-901L](.github/SinoTrack ST-901L-4G-E.pdf)  
-[ST-915L](.github/SinoTrack ST915L-E.pdf)
+[ST-915L](/.github/SinoTrack%20ST915L-E.pdf)
+
+`RCONF` command
+
+```
+ST915/4G,ID:[ID Redacted],PW:0000,U1:,U2:,U3:,MODE:GPRS-MOVE,DAILY:OFF,GEO FENCE:OFF,OVER SPEED:OFF,VOICE:OFF,SHAKE ALARM:OFF,SLEEP:ON,APN:iot.1nce.net,,,IP:FLESPI URL]:[FLESPI IP],GPRS UPLOAD TIME:30s,TIME ZONE:0.0
+```
+
+### ST-901 Device
+
+[ST-901L](./.github/SinoTrack%20ST901L.pdf)
+
+`RCONF` command
+
+```
+ST-901/4G,ID:[ID Redacted],PW:0000,U1:,U2:,U3:,MODE:GPRS,POWER ALARM:OFF,ACCSMS:OFF,ACCCALL:OFF,GEO FENCE:OFF,OVER SPEED:OFF,VOICE:OFF,SHAKE ALARM:OFF,SLEEP:OFF,APN:iot.1nce.net,,,IP:[FLESPI URL]:[FLESPI IP],GPRS UPLOAD TIME 1:20,GPRS UPLOAD TIME 2:20,TIME ZONE:0.0
+```
 
 ### ST909 Device
 
