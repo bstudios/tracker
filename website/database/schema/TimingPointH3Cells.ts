@@ -7,6 +7,10 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { TimingPoints } from "./TimingPoints";
 
+// Join table that stores the H3 cells associated with each timing point.
+// This makes it possible to index timing points by geography, so the app can
+// quickly find nearby or relevant timing points from an H3 cell lookup instead
+// of scanning every record.
 export const TimingPointH3Cells = sqliteTable(
   "timing_point_h3_cells",
   {
