@@ -11,7 +11,7 @@ import {
   Title,
 } from "@mantine/core";
 import { AreaChart } from "@mantine/charts";
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { memo, useEffect, useState } from "react";
 import { Link, type MetaFunction } from "react-router";
@@ -175,31 +175,20 @@ export async function loader({ context }: Route.LoaderArgs) {
     getPasswordRouteAccess(context);
 
   const db = getDb(context);
-  const dayStart = refDate.startOf("day").toMillis();
-  const dayEnd = refDate.endOf("day").toMillis();
 
   const points = db.$with("points").as(
     db
       .select({
         id: Schema.Events.id,
         timestamp: Schema.Events.timestamp,
-        latitude:
-          sql<number>`CAST(json_extract(${Schema.Events.data}, '$.location.latitude') AS REAL)`.as(
-            "latitude",
-          ),
-        longitude:
-          sql<number>`CAST(json_extract(${Schema.Events.data}, '$.location.longitude') AS REAL)`.as(
-            "longitude",
-          ),
+        latitude: Schema.Events.latitude,
+        longitude: Schema.Events.longitude,
       })
       .from(Schema.Events)
       .where(
         and(
           eq(Schema.Events.deviceId, deviceId),
-          gte(Schema.Events.timestamp, dayStart),
-          lte(Schema.Events.timestamp, dayEnd),
-          sql`json_extract(${Schema.Events.data}, '$.location.latitude') IS NOT NULL`,
-          sql`json_extract(${Schema.Events.data}, '$.location.longitude') IS NOT NULL`,
+          eq(Schema.Events.dateString, urlDate),
         ),
       )
       .orderBy(asc(Schema.Events.timestamp)),
