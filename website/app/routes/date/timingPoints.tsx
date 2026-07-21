@@ -28,9 +28,10 @@ export async function loader({ context }: Route.LoaderArgs) {
         timing_point_latitude: sql<number>`${Schema.TimingPoints.latitude}`.as(
           "timing_point_latitude",
         ),
-        timing_point_longitude: sql<number>`${Schema.TimingPoints.longitude}`.as(
-          "timing_point_longitude",
-        ),
+        timing_point_longitude:
+          sql<number>`${Schema.TimingPoints.longitude}`.as(
+            "timing_point_longitude",
+          ),
         radius: Schema.TimingPoints.radius,
       })
       .from(Schema.TimingPoints)
@@ -73,12 +74,14 @@ export async function loader({ context }: Route.LoaderArgs) {
         timing_point_id: selectedTimingPoints.id,
         order: selectedTimingPoints.order,
         radius: selectedTimingPoints.radius,
-        timing_point_latitude: sql<number>`${selectedTimingPoints.timing_point_latitude}`.as(
-          "timing_point_latitude",
-        ),
-        timing_point_longitude: sql<number>`${selectedTimingPoints.timing_point_longitude}`.as(
-          "timing_point_longitude",
-        ),
+        timing_point_latitude:
+          sql<number>`${selectedTimingPoints.timing_point_latitude}`.as(
+            "timing_point_latitude",
+          ),
+        timing_point_longitude:
+          sql<number>`${selectedTimingPoints.timing_point_longitude}`.as(
+            "timing_point_longitude",
+          ),
         event_id: dailyEvents.id,
         timestamp: dailyEvents.timestamp,
         event_latitude: dailyEvents.event_latitude,
