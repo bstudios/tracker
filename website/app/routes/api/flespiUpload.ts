@@ -19,6 +19,7 @@ const normalizedMessageSchema = zod.object({
   accuracy: zod.coerce.number().min(0).optional(),
   batteryPercentage: zod.coerce.number().min(0).max(100).optional(),
   batteryCharging: zod.coerce.boolean().optional(),
+  batteryVoltage: zod.coerce.number().min(0).optional(),
   identifier: zod.string().min(1),
   deviceTypeId: zod.coerce.string().min(1).optional(),
 });
@@ -126,6 +127,7 @@ const knownMappedKeys = [
   "battery.percentage",
   "battery.charging",
   "battery.is_charging",
+  "battery.voltage",
 ] as const;
 
 const toMessages = (payload: unknown) => {
@@ -173,7 +175,11 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
         speed: number;
         altitudeAccuracy: null;
       };
-      battery: { percentage: number; charging: boolean } | null;
+      battery: {
+        percentage: number;
+        charging: boolean;
+        voltage: number;
+      } | null;
       other?: Record<string, JsonValue>;
     };
   }> = [];
@@ -253,6 +259,7 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
         "battery.charging",
         "battery.is_charging",
       ]),
+      batteryVoltage: pickFirstValue(parsedMessage.data, ["battery.voltage"]),
       identifier: pickFirstValue(parsedMessage.data, [
         "ident",
         "device.ident",
@@ -335,11 +342,13 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
           altitudeAccuracy: null,
         },
         battery:
-          normalized.data.batteryPercentage !== undefined &&
-          normalized.data.batteryCharging !== undefined
+          normalized.data.batteryPercentage !== undefined ||
+          normalized.data.batteryCharging !== undefined ||
+          normalized.data.batteryVoltage !== undefined
             ? {
-                percentage: normalized.data.batteryPercentage,
-                charging: normalized.data.batteryCharging,
+                percentage: normalized.data.batteryPercentage ?? 0,
+                charging: normalized.data.batteryCharging ?? false,
+                voltage: normalized.data.batteryVoltage ?? 0,
               }
             : null,
         other: (() => {

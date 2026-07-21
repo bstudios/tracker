@@ -21,6 +21,7 @@ export const Events = sqliteTable("events", {
       battery: {
         percentage: number;
         charging: boolean;
+        voltage: number;
       } | null;
       other?: Record<string, JsonValue>;
     }>()
