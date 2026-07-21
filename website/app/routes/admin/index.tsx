@@ -1,6 +1,6 @@
 import { getDb } from "~/routeContext";
 import { Button, Container, Stack, Text, Title } from "@mantine/core";
-import { sql } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { Link, type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/index";
@@ -12,15 +12,11 @@ export const meta: MetaFunction = () => {
 export async function loader({ context }: Route.LoaderArgs) {
   const availableDateRows = await getDb(context)
     .select({
-      date: sql<string>`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`.as(
-        "date"
-      ),
+      date: Schema.Events.dateString,
     })
     .from(Schema.Events)
-    .groupBy(sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`)
-    .orderBy(
-      sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch') DESC`
-    );
+    .groupBy(Schema.Events.dateString)
+    .orderBy(desc(Schema.Events.dateString));
 
   return { availableDateRows };
 }

@@ -1,4 +1,4 @@
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   Button,
   Card,
@@ -27,8 +27,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     .where(
       and(
         eq(Schema.Events.deviceId, deviceId),
-        gte(Schema.Events.timestamp, refDate.toMillis()),
-        lte(Schema.Events.timestamp, refDate.toMillis() + 86400000),
+        eq(Schema.Events.dateString, urlDate),
       ),
     )
     .limit(1);

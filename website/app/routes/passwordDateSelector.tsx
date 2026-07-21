@@ -1,6 +1,6 @@
 import { getDb } from "~/routeContext";
 import { Button, Center, Stack, Title } from "@mantine/core";
-import { eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { redirect, useNavigate, type MetaFunction } from "react-router";
 import { findPasswordAccessWithRateLimit } from "~/passwordAccess.server";
 import * as Schema from "~/database/schema.d";
@@ -34,18 +34,12 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 
   const availableDateRows = await getDb(context)
     .select({
-      date: sql<string>`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`.as(
-        "date",
-      ),
+      date: Schema.Events.dateString,
     })
     .from(Schema.Events)
     .where(eq(Schema.Events.deviceId, accessConfig.deviceId))
-    .groupBy(
-      sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`,
-    )
-    .orderBy(
-      sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch') DESC`,
-    );
+    .groupBy(Schema.Events.dateString)
+    .orderBy(desc(Schema.Events.dateString));
 
   const availableDates =
     accessConfig.allowedDates === null

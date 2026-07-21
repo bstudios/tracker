@@ -1,6 +1,6 @@
 import { getDb } from "~/routeContext";
 import { Button, Container, Table, Text, Title } from "@mantine/core";
-import { sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Form, type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
@@ -28,16 +28,12 @@ const parseDateInput = (rawDate: string) => {
 export async function loader({ context }: Route.LoaderArgs) {
   const availableDateRows = await getDb(context)
     .select({
-      date: sql<string>`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`.as(
-        "date"
-      ),
+      date: Schema.Events.dateString,
       dataPointCount: sql<number>`count(*)`.as("data_point_count"),
     })
     .from(Schema.Events)
-    .groupBy(sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch')`)
-    .orderBy(
-      sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch') DESC`
-    );
+    .groupBy(Schema.Events.dateString)
+    .orderBy(desc(Schema.Events.dateString));
 
   return { availableDateRows };
 }
@@ -48,9 +44,9 @@ export async function action({ context, request }: Route.ActionArgs) {
 
   if (intent === "deleteDateData") {
     const date = parseDateInput((formData.get("date") as string | null) ?? "");
-    await getDb(context).delete(Schema.Events).where(
-      sql`strftime('%Y-%m-%d', ${Schema.Events.timestamp} / 1000, 'unixepoch') = ${date}`
-    );
+    await getDb(context)
+      .delete(Schema.Events)
+      .where(eq(Schema.Events.dateString, date));
 
     return { success: true };
   }
@@ -93,7 +89,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                       onClick={(event) => {
                         if (
                           !window.confirm(
-                            `Are you sure you want to delete all ${row.dataPointCount} data points for ${row.date}? This action cannot be undone.`
+                            `Are you sure you want to delete all ${row.dataPointCount} data points for ${row.date}? This action cannot be undone.`,
                           )
                         ) {
                           event.preventDefault();

@@ -49,5 +49,10 @@ export const Events = sqliteTable(
       table.dateString,
       table.h3Index,
     ),
+    index("device_dateString_timestamp_idx").on(
+      table.deviceId,
+      table.dateString,
+      table.timestamp,
+    ),
   ],
 );

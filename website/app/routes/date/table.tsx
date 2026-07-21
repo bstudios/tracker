@@ -1,7 +1,7 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Button, Container, Group, Table, Text, Title } from "@mantine/core";
 import { IconBrandApple, IconBrandGoogleMaps } from "@tabler/icons-react";
-import { and, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { useEffect, useState } from "react";
 import { Link, useFetcher, type MetaFunction } from "react-router";
@@ -15,12 +15,13 @@ export const meta: MetaFunction = () => {
 const pageLength = 50;
 export async function loader({ context, params }: Route.LoaderArgs) {
   const cursor = params.cursor;
-  const { refDate, urlDate, password, deviceId } =
-    getPasswordRouteAccess(context);
+  const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
 
   const events = await getDb(context)
     .select({
       timestamp: Events.timestamp,
+      latitude: Events.latitude,
+      longitude: Events.longitude,
       data: Events.data,
       id: Events.id,
     })
@@ -29,8 +30,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     .where(
       and(
         eq(Events.deviceId, deviceId),
-        gte(Events.timestamp, refDate.toMillis()),
-        lte(Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
+        eq(Events.dateString, urlDate),
         cursor ? lt(Events.id, parseInt(cursor)) : undefined,
       ),
     )
@@ -39,13 +39,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
   const count = await getDb(context)
     .select({ count: sql<number>`count(*)` })
     .from(Events)
-    .where(
-      and(
-        eq(Events.deviceId, deviceId),
-        gte(Events.timestamp, refDate.toMillis()),
-        lte(Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
-      ),
-    );
+    .where(and(eq(Events.deviceId, deviceId), eq(Events.dateString, urlDate)));
 
   return {
     events,
@@ -107,11 +101,11 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                       zone: "Europe/London",
                     }).toLocaleString(DateTime.DATETIME_MED)}
                   </Table.Td>
-                  <Table.Td>{event.data.location.latitude}</Table.Td>
-                  <Table.Td>{event.data.location.longitude}</Table.Td>
+                  <Table.Td>{event.latitude}</Table.Td>
+                  <Table.Td>{event.longitude}</Table.Td>
                   <Table.Td>
                     <Link
-                      to={`https://www.google.com/maps?q=${event.data.location.latitude},${event.data.location.longitude}`}
+                      to={`https://www.google.com/maps?q=${event.latitude},${event.longitude}`}
                       target="_blank"
                     >
                       <IconBrandGoogleMaps />
@@ -119,7 +113,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                   </Table.Td>
                   <Table.Td>
                     <Link
-                      to={`https://maps.apple.com/?q=${event.data.location.latitude},${event.data.location.longitude}`}
+                      to={`https://maps.apple.com/?q=${event.latitude},${event.longitude}`}
                       target="_blank"
                     >
                       <IconBrandApple />

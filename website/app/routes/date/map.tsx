@@ -1,6 +1,6 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Center, Stack, Title } from "@mantine/core";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
 import { LiveMap } from "~/components/LiveMap/LiveMap";
@@ -24,15 +24,15 @@ export async function loader({ context }: Route.LoaderArgs) {
   const events = await getDb(context)
     .select({
       timestamp: Schema.Events.timestamp,
-      data: Schema.Events.data,
+      latitude: Schema.Events.latitude,
+      longitude: Schema.Events.longitude,
     })
     .from(Schema.Events)
     .orderBy(desc(Schema.Events.timestamp))
     .where(
       and(
         eq(Schema.Events.deviceId, deviceId),
-        gte(Schema.Events.timestamp, refDate.toMillis()),
-        lte(Schema.Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
+        eq(Schema.Events.dateString, urlDate),
       ),
     );
 
@@ -81,17 +81,11 @@ export default function Page({ loaderData }: Route.ComponentProps) {
   return (
     <LiveMap
       zoom={13}
-      pins={loaderData.events
-        .filter(
-          (event) =>
-            "latitude" in event.data.location &&
-            "longitude" in event.data.location,
-        )
-        .map((event) => ({
-          latitude: event.data.location.latitude,
-          longitude: event.data.location.longitude,
-          timestamp: event.timestamp,
-        }))}
+      pins={loaderData.events.map((event) => ({
+        latitude: event.latitude,
+        longitude: event.longitude,
+        timestamp: event.timestamp,
+      }))}
       timingPoints={loaderData.timingPoints}
       deviceIcon={loaderData.deviceIcon}
       urlDate={loaderData.urlDate}

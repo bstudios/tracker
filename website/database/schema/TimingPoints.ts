@@ -13,6 +13,7 @@ export const TimingPoints = sqliteTable("timing_points", {
   order: integer("order", { mode: "number" }).default(99999).notNull(),
   latitude: real("latitude").notNull(),
   longitude: real("longitude").notNull(),
+  h3Index: text("h3_index").notNull().default(""),
   radius: integer("radius", { mode: "number" }).default(10).notNull(), // Metres
   icon: text("icon", { mode: "text" }).default(sql`NULL`),
   googleLink: text("google_link", { mode: "text" }).default(sql`NULL`),

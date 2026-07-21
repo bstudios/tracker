@@ -1,5 +1,5 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/downloadGPX";
@@ -31,6 +31,8 @@ export async function loader({ context, params }: Route.LoaderArgs) {
           const databaseResult = await getDb(context)
             .select({
               timestamp: Events.timestamp,
+              latitude: Events.latitude,
+              longitude: Events.longitude,
               data: Events.data,
             })
             .from(Events)
@@ -40,8 +42,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
             .where(
               and(
                 eq(Events.deviceId, deviceId),
-                gte(Events.timestamp, refDate.toMillis()),
-                lte(Events.timestamp, refDate.toMillis() + 86400000), // 24 hours
+                eq(Events.dateString, urlDate),
               ),
             );
           if (databaseResult.length === 0) {
@@ -57,8 +58,8 @@ export async function loader({ context, params }: Route.LoaderArgs) {
             if (databaseResult.data instanceof Date)
               return databaseResult.data.toISOString(); // Format dates consistently
             return `<trkpt lat="${
-              databaseResult.data.location.latitude
-            }" lon="${databaseResult.data.location.longitude}">
+              databaseResult.latitude
+            }" lon="${databaseResult.longitude}">
                       <ele>${databaseResult.data.location.altitude}</ele>
                       <speed>${databaseResult.data.location.speed}</speed>
                       <time>${DateTime.fromMillis(
