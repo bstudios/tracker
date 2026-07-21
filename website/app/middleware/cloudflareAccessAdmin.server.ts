@@ -29,6 +29,51 @@ const getJwks = (teamDomain: string) => {
   return createdJwks;
 };
 
+const parseCookieHeader = (cookieHeader: string) => {
+  const cookies = new Map<string, string>();
+
+  for (const part of cookieHeader.split(";")) {
+    const trimmedPart = part.trim();
+    if (!trimmedPart) {
+      continue;
+    }
+
+    const separatorIndex = trimmedPart.indexOf("=");
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = trimmedPart.slice(0, separatorIndex).trim();
+    const value = trimmedPart.slice(separatorIndex + 1).trim();
+    if (!key || !value) {
+      continue;
+    }
+
+    try {
+      cookies.set(key, decodeURIComponent(value));
+    } catch {
+      cookies.set(key, value);
+    }
+  }
+
+  return cookies;
+};
+
+const getAccessTokenFromRequest = (request: Request) => {
+  const headerToken = request.headers.get("cf-access-jwt-assertion");
+  if (headerToken) {
+    return headerToken;
+  }
+
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookies = parseCookieHeader(cookieHeader);
+  return cookies.get("CF_Authorization") ?? null;
+};
+
 export const cloudflareAccessAdminMiddleware: MiddlewareFunction<
   Response
 > = async ({ request, context }) => {
@@ -43,9 +88,11 @@ export const cloudflareAccessAdminMiddleware: MiddlewareFunction<
     throw new Response("Missing Cloudflare Access config", { status: 500 });
   }
 
-  const token = request.headers.get("cf-access-jwt-assertion");
+  const token = getAccessTokenFromRequest(request);
   if (!token) {
-    console.warn("Missing required Cloudflare Access JWT");
+    console.warn(
+      "Missing required Cloudflare Access JWT in assertion header and cookie",
+    );
     throw new Response("Unauthorized", { status: 401 });
   }
 
