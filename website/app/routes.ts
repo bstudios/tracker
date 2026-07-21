@@ -10,7 +10,6 @@ export default [
   route("upload-traccar.json", "./routes/api/traccarUpload.ts"),
   route("upload-flespi.json", "./routes/api/flespiUpload.ts"),
   route("upload.json", "./routes/api/appUpload.ts"),
-  route("backfill-h3.json", "./routes/api/backfillH3.ts"), // TEMP ROUTE FOR BACKFILLING H3 INDEXES
   ...prefix(":password", [index("./routes/passwordDateSelector.tsx")]),
   route(":password/:date", "./routes/date/protectedLayout.tsx", [
     route("live", "./routes/date/map.tsx"),
