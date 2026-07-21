@@ -44,7 +44,9 @@ const parseCoordsFromData = (value: unknown) => {
 
 const isLocalRequest = (request: Request) => {
   const url = new URL(request.url);
-  return ["localhost", "127.0.0.1"].includes(url.hostname);
+  return ["localhost", "127.0.0.1", "tracker.bithell.studio"].includes(
+    url.hostname,
+  );
 };
 
 const runBackfill = async (
