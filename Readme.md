@@ -21,6 +21,11 @@ The logic for each is quite different, however as they share so many components 
 
 The Expo app is a simple app in the app/ folder which uploads location data to the server. It is designed to be run on a device with a GPS chip, such as a phone or tablet.
 
+### SinoTrack Devices
+
+[ST-901L](.github/SinoTrack ST-901L-4G-E.pdf)  
+[ST-915L](.github/SinoTrack ST915L-E.pdf)
+
 ### ST909 Device
 
 The device uses H02 protocol (port 5013)
