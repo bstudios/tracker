@@ -3,6 +3,7 @@ import { data, redirect } from "react-router";
 import { z as zod } from "zod";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/appUpload";
+import { getH3IndexForLocation, toUtcDateString } from "~/utils/h3";
 
 export const loader = async ({}: Route.LoaderArgs) => redirect("/");
 
@@ -27,6 +28,8 @@ const validator = zod.object({
 });
 
 export const action = async ({ context, request }: Route.ActionArgs) => {
+  return data({}, 200);
+  /**
   if (request.method !== "PUT") {
     return data({ message: "Method not allowed" }, 405);
   }
@@ -39,18 +42,26 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
   const validated = await validator.safeParseAsync(payload);
   if (!validated.success) return data({ message: validated.error }, 400);
 
+  const latitude = validated.data.location.coords.latitude;
+  const longitude = validated.data.location.coords.longitude;
+  const timestamp = validated.data.location.timestamp;
+
   const insertTimeSeries = await getDb(context)
     .insert(Events)
     .values({
-      timestamp: validated.data.location.timestamp,
+      timestamp,
+      dateString: toUtcDateString(timestamp),
+      latitude,
+      longitude,
+      h3Index: getH3IndexForLocation(latitude, longitude),
       deviceId: 1, // TODO: This should be the device ID that is associated with the API key that was used to authenticate this request.
       data: {
         location: {
           accuracy: validated.data.location.coords.accuracy,
-          longitude: validated.data.location.coords.longitude,
+          longitude,
           altitude: validated.data.location.coords.altitude,
           heading: validated.data.location.coords.heading,
-          latitude: validated.data.location.coords.latitude,
+          latitude,
           altitudeAccuracy: validated.data.location.coords.altitudeAccuracy,
           speed: validated.data.location.coords.speed,
         },
@@ -60,4 +71,5 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
   if (insertTimeSeries.error)
     return data({ message: insertTimeSeries.error }, 500);
   return data({}, 200);
+   */
 };

@@ -3,6 +3,7 @@ import { data } from "react-router";
 import { z as zod } from "zod";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/traccarUpload";
+import { getH3IndexForLocation, toUtcDateString } from "~/utils/h3";
 
 export const loader = async ({ context, request }: Route.LoaderArgs) => {
   const getRequestParameters = zod.object({
@@ -36,18 +37,26 @@ export const loader = async ({ context, request }: Route.LoaderArgs) => {
     Object.fromEntries(url.searchParams),
   );
   if (parsedRequestParameters.success) {
+    const latitude = parsedRequestParameters.data.latitude;
+    const longitude = parsedRequestParameters.data.longitude;
+    const timestamp = parsedRequestParameters.data.fixTime;
+
     const insertTimeSeries = await getDb(context)
       .insert(Events)
       .values({
-        timestamp: parsedRequestParameters.data.fixTime,
+        timestamp,
+        dateString: toUtcDateString(timestamp),
+        latitude,
+        longitude,
+        h3Index: getH3IndexForLocation(latitude, longitude),
         deviceId: 1, // TODO: This should be the device ID that is associated with the API key that was used to authenticate this request.
         data: {
           location: {
             accuracy: parsedRequestParameters.data.accuracy ?? 0,
-            longitude: parsedRequestParameters.data.longitude,
+            longitude,
             altitude: parsedRequestParameters.data.altitude ?? 0,
             heading: parsedRequestParameters.data.course ?? 0,
-            latitude: parsedRequestParameters.data.latitude,
+            latitude,
             speed: parsedRequestParameters.data.speed ?? 0,
             altitudeAccuracy: null,
           },

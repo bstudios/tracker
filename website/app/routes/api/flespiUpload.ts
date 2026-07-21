@@ -6,6 +6,7 @@ import type { JsonValue } from "~/database/schema/Events";
 import { Devices } from "~/database/schema/Devices";
 import { eq, inArray } from "drizzle-orm";
 import type { Route } from "./+types/flespiUpload";
+import { getH3IndexForLocation, toUtcDateString } from "~/utils/h3";
 
 const rawMessageSchema = zod.record(zod.string(), zod.unknown());
 
@@ -164,6 +165,10 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
 
   const eventValues: Array<{
     timestamp: number;
+    dateString: string;
+    latitude: number;
+    longitude: number;
+    h3Index: string;
     deviceId: number;
     data: {
       location: {
@@ -330,6 +335,13 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
 
     eventValues.push({
       timestamp: timestampMs,
+      dateString: toUtcDateString(timestampMs),
+      latitude: normalized.data.latitude,
+      longitude: normalized.data.longitude,
+      h3Index: getH3IndexForLocation(
+        normalized.data.latitude,
+        normalized.data.longitude,
+      ),
       deviceId,
       data: {
         location: {
