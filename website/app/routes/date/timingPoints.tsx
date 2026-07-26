@@ -16,7 +16,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
 
-  // All timing points applicable on the chosen date
+  // All timing points belonging to the device we are looking at
   const selectedTimingPoints = db.$with("selected_timing_points").as(
     db
       .select({
@@ -35,12 +35,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         radius: Schema.TimingPoints.radius,
       })
       .from(Schema.TimingPoints)
-      .where(
-        sql`EXISTS (
-          SELECT 1 FROM json_each(${Schema.TimingPoints.applicableDates})
-          WHERE value = ${urlDate}
-        )`,
-      ),
+      .where(eq(Schema.TimingPoints.deviceId, deviceId)),
   );
 
   // Get all events for the day

@@ -1,6 +1,6 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Center, Stack, Title } from "@mantine/core";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
 import { LiveMap } from "~/components/LiveMap/LiveMap";
@@ -45,11 +45,8 @@ export async function loader({ context }: Route.LoaderArgs) {
       icon: Schema.TimingPoints.icon,
       googleLink: Schema.TimingPoints.googleLink,
     })
-    .from(Schema.TimingPoints).where(sql`EXISTS (
-      SELECT 1
-      FROM json_each(${Schema.TimingPoints.applicableDates})
-      WHERE value = ${urlDate}
-    )`); // Selects only timing points that are applicable for the current date
+    .from(Schema.TimingPoints)
+    .where(eq(Schema.TimingPoints.deviceId, deviceId)); // Selects only the timing points belonging to this device
   // No point having an order by given that it's a map
 
   return {

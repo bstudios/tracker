@@ -1,6 +1,6 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { Container, Group, Table, Title } from "@mantine/core";
-import { and, asc, eq, or, sql } from "drizzle-orm";
+import { Container, Table, Title } from "@mantine/core";
+import { asc, eq, or, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
@@ -15,7 +15,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
 
-  // Select timing points that are applicable on the chosen date
+  // Select the timing points belonging to the device we are looking at
   const selectedTimingPoints = db.$with("selected_timing_points").as(
     db
       .select({
@@ -30,18 +30,14 @@ export async function loader({ context }: Route.LoaderArgs) {
             "timing_point_longitude",
           ),
         radius: Schema.TimingPoints.radius,
-        applicableDates: Schema.TimingPoints.applicableDates,
       })
       .from(Schema.TimingPoints)
-      .where(
-        sql`EXISTS (
-          SELECT 1 FROM json_each(${Schema.TimingPoints.applicableDates})
-          WHERE value = ${urlDate}
-        )`,
-      ),
+      .where(eq(Schema.TimingPoints.deviceId, deviceId)),
   );
 
-  // Derive event_date from timestamp; keep only events that fall on applicable dates for the timing point
+  // All of the device's events near its timing points, across every date it has data for.
+  // Timing points are no longer pinned to dates, so the dates we compare against are simply
+  // whichever dates this device actually has timing point matches on.
   const dateEvents = db.$with("date_events").as(
     db
       .select({
@@ -76,15 +72,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         Schema.Events,
         eq(Schema.Events.h3Index, Schema.TimingPointH3Cells.h3Index),
       )
-      .where(
-        and(
-          eq(Schema.Events.deviceId, deviceId),
-          sql`EXISTS (
-            SELECT 1 FROM json_each(${selectedTimingPoints.applicableDates})
-            WHERE value = ${Schema.Events.dateString}
-          )`,
-        ),
-      ),
+      .where(eq(Schema.Events.deviceId, deviceId)),
   );
 
   // Filter events that are within the timing point radius for that date
@@ -173,21 +161,25 @@ export async function loader({ context }: Route.LoaderArgs) {
     )
     .orderBy(asc(rankedEvents.order), asc(rankedEvents.date));
 
-  // Also fetch all timing points applicable to the selected date (even if no events)
-  const applicableTimingPoints = await db
+  // Also fetch all of the device's timing points (even if they have no events)
+  const deviceTimingPoints = await db
     .with(selectedTimingPoints)
     .select({
       id: selectedTimingPoints.id,
       name: selectedTimingPoints.name,
       order: selectedTimingPoints.order,
-      applicableDates: selectedTimingPoints.applicableDates,
     })
     .from(selectedTimingPoints)
     .orderBy(asc(selectedTimingPoints.order));
 
-  // Pre-compute date columns and grouped rows server-side
+  // Pre-compute date columns and grouped rows server-side.
+  // The comparison columns are every date this device has timing point matches on, plus the
+  // date currently being viewed so it is always shown even when nothing matched that day.
   const dates = Array.from(
-    new Set((timingPointsByDate as { date: string }[]).map((r) => r.date)),
+    new Set([
+      urlDate,
+      ...(timingPointsByDate as { date: string }[]).map((r) => r.date),
+    ]),
   ).sort();
 
   const grouped: Record<
@@ -229,7 +221,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   }
 
   // Ensure timing points with no events are included
-  for (const tp of applicableTimingPoints as {
+  for (const tp of deviceTimingPoints as {
     id: number;
     name: string;
     order: number;

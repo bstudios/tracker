@@ -5,6 +5,7 @@ import {
   MantineProvider,
   Modal,
   NumberInput,
+  Select,
   Text,
   TextInput,
   ThemeIcon,
@@ -46,10 +47,12 @@ function NewPointCreator({
   newPoint,
   setNewPoint,
   editorPath,
+  devices,
 }: {
   newPoint: LatLng | null;
   setNewPoint: (point: LatLng | null) => void;
   editorPath: string;
+  devices: TimingPointEditorProps["devices"];
 }) {
   const fetcher = useFetcher();
 
@@ -80,6 +83,17 @@ function NewPointCreator({
           name="name"
           required
         />
+        <Select
+          label="Device"
+          placeholder="Select the device this timing point belongs to"
+          name="deviceId"
+          required
+          defaultValue={devices[0] ? String(devices[0].id) : null}
+          data={devices.map((device) => ({
+            value: String(device.id),
+            label: device.name,
+          }))}
+        />
         <NumberInput
           label="Radius"
           placeholder="Enter radius in metres"
@@ -106,6 +120,9 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
     TimingPointEditorProps["timingPoints"][0] | null
   >(null);
   const fetcher = useFetcher();
+
+  const deviceNameById = (deviceId: number) =>
+    props.devices.find((device) => device.id === deviceId)?.name ?? "Unknown";
 
   const uniquePins = Object.values(
     props.pins.reduce((acc, pin) => {
@@ -138,6 +155,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
               newPoint={newPoint}
               setNewPoint={setNewPoint}
               editorPath={props.editorPath}
+              devices={props.devices}
             />
             <TileLayer
               attribution='Map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -170,12 +188,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                   <Popup>
                     <Text>{pin.name}</Text>
                     <Text>Radius: {pin.radius}m</Text>
-                    <Text>
-                      Applicable Dates:{" "}
-                      {pin.applicableDates
-                        ? pin.applicableDates.join(", ")
-                        : "None"}
-                    </Text>
+                    <Text>Device: {deviceNameById(pin.deviceId)}</Text>
                     <Text>Order: {pin.order}</Text>
                   </Popup>
                 </Marker>
@@ -215,7 +228,12 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
             {props.timingPoints.map((point) => (
               <List.Item key={point.id}>
                 <Group>
-                  <Text>{point.name}</Text>
+                  <Text>
+                    {point.name}{" "}
+                    <Text span c="dimmed" size="xs">
+                      ({deviceNameById(point.deviceId)})
+                    </Text>
+                  </Text>
                   <Button onClick={() => setEditingPoint(point)}>Edit</Button>
                   <fetcher.Form method="delete" action={props.editorPath}>
                     <input type="hidden" name="id" value={point.id} />
@@ -251,14 +269,15 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 name="order"
                 defaultValue={editingPoint.order}
               />
-              <TextInput
-                label="Applicable Dates (comma separated)"
-                name="applicableDates"
-                defaultValue={
-                  editingPoint.applicableDates
-                    ? editingPoint.applicableDates.join(",")
-                    : ""
-                }
+              <Select
+                label="Device"
+                name="deviceId"
+                required
+                defaultValue={String(editingPoint.deviceId)}
+                data={props.devices.map((device) => ({
+                  value: String(device.id),
+                  label: device.name,
+                }))}
               />
               <Button type="submit">Save</Button>
             </fetcher.Form>

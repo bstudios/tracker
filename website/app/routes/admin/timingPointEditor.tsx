@@ -14,30 +14,25 @@ export const meta: MetaFunction = () => {
   return [{ title: "Timing Point Editor" }];
 };
 
-const parseApplicableDatesInput = (rawApplicableDates: string) => {
-  const normalisedValue = rawApplicableDates.trim();
-  if (normalisedValue.length === 0) {
-    return [];
+const parseDeviceIdInput = async (
+  db: ReturnType<typeof getDb>,
+  rawDeviceId: FormDataEntryValue | null,
+) => {
+  const deviceId = parseInt(rawDeviceId as string);
+  if (!Number.isFinite(deviceId)) {
+    throw new Error("A device must be selected for the timing point.");
   }
 
-  const parsedDates = normalisedValue
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  for (const date of parsedDates) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      throw new Error("Applicable dates must use yyyy-MM-dd format.");
-    }
-    const parsedDate = DateTime.fromFormat(date, "yyyy-MM-dd", {
-      zone: "utc",
-    });
-    if (!parsedDate.isValid) {
-      throw new Error("Applicable dates must be valid calendar dates.");
-    }
+  const [device] = await db
+    .select({ id: Schema.Devices.id })
+    .from(Schema.Devices)
+    .where(eq(Schema.Devices.id, deviceId))
+    .limit(1);
+  if (!device) {
+    throw new Error("The selected device does not exist.");
   }
 
-  return [...new Set(parsedDates)];
+  return device.id;
 };
 
 export async function loader({ context, params }: Route.LoaderArgs) {
@@ -62,6 +57,10 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     .select()
     .from(Schema.TimingPoints)
     .orderBy(asc(Schema.TimingPoints.order));
+  const devices = await db
+    .select({ id: Schema.Devices.id, name: Schema.Devices.name })
+    .from(Schema.Devices)
+    .orderBy(asc(Schema.Devices.name));
 
   return {
     date: refDate.toISO(),
@@ -69,6 +68,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     urlDate,
     editorPath: `/admin/${urlDate}/timingPointEditor`,
     timingPoints,
+    devices,
   };
 }
 
@@ -81,6 +81,7 @@ export async function action({ context, request }: Route.ActionArgs) {
     const latitude = parseFloat(formData.get("latitude") as string);
     const longitude = parseFloat(formData.get("longitude") as string);
     const radius = parseInt(formData.get("radius") as string);
+    const deviceId = await parseDeviceIdInput(db, formData.get("deviceId"));
 
     const { centerH3Index, coveringCells } = getTimingPointH3Coverage({
       latitude,
@@ -92,6 +93,7 @@ export async function action({ context, request }: Route.ActionArgs) {
       .insert(Schema.TimingPoints)
       .values({
         name,
+        deviceId,
         latitude,
         longitude,
         radius,
@@ -123,8 +125,7 @@ export async function action({ context, request }: Route.ActionArgs) {
     const name = formData.get("name") as string;
     const radius = parseInt(formData.get("radius") as string);
     const order = parseInt(formData.get("order") as string);
-    const applicableDatesRaw = formData.get("applicableDates") as string;
-    const applicableDates = parseApplicableDatesInput(applicableDatesRaw);
+    const deviceId = await parseDeviceIdInput(db, formData.get("deviceId"));
 
     const [existingTimingPoint] = await db
       .select({
@@ -152,7 +153,7 @@ export async function action({ context, request }: Route.ActionArgs) {
         name,
         radius,
         order,
-        applicableDates,
+        deviceId,
         h3Index: centerH3Index,
       })
       .where(eq(Schema.TimingPoints.id, id));
@@ -173,6 +174,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
     <TimingPointEditor
       editorPath={loaderData.editorPath}
       timingPoints={loaderData.timingPoints}
+      devices={loaderData.devices}
       pins={loaderData.events.map((event) => ({
         latitude: event.latitude,
         longitude: event.longitude,

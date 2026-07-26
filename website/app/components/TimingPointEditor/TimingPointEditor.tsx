@@ -6,6 +6,7 @@ import { TimingPointEditor as TimingPointEditorClient } from "./TimingPointEdito
 export interface TimingPointEditorProps {
   editorPath: string;
   timingPoints: InferSelectModel<typeof Schema.TimingPoints>[];
+  devices: { id: number; name: string }[];
   pins: {
     latitude: number;
     longitude: number;
