@@ -14,6 +14,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { eq } from "drizzle-orm";
 import { useState } from "react";
 import {
@@ -153,23 +154,30 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
     modal.open();
   };
 
+  // Kept adjacent rather than pushed to opposite edges of a fluid container — the pair
+  // reads as one control, and the dates label the buttons so nothing has to be inferred
+  // from which side an arrow is on.
   const dayNav = (
-    <Group justify="space-between">
+    <Group gap="xs">
       <Button
         component={Link}
         to={`/${password}/${previousDate}/logbook`}
         variant="light"
+        size="compact-md"
+        leftSection={<IconChevronLeft size={16} />}
         disabled={!previousDate}
       >
-        ← {previousDate ?? "No earlier data"}
+        {previousDate ?? "No earlier data"}
       </Button>
       <Button
         component={Link}
         to={`/${password}/${nextDate}/logbook`}
         variant="light"
+        size="compact-md"
+        rightSection={<IconChevronRight size={16} />}
         disabled={!nextDate}
       >
-        {nextDate ?? "No later data"} →
+        {nextDate ?? "No later data"}
       </Button>
     </Group>
   );

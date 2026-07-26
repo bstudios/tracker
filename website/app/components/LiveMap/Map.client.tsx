@@ -47,6 +47,7 @@ import {
   DISPLAY_TIME_ZONE,
   displayDateTime,
   formatDateTimeMed,
+  toMillisTimestamp,
 } from "~/utils/dateTime";
 import {
   createRestrictedViewportBounds,
@@ -55,6 +56,7 @@ import {
 import { MapCenterConstraint } from "../MapCenterConstraint.client";
 import { MapZoomOutConstraint } from "../MapZoomOutConstraint.client";
 import type { MapProps } from "./LiveMap";
+import { findPointAt, TimeScrubber } from "./TimeScrubber";
 
 export const MantineProviderWrapper = (props: {
   children: React.ReactNode;
@@ -189,36 +191,26 @@ export const Map = (props: MapProps) => {
   }, [revalidator]);
 
   const { width, height } = useViewportSize();
-  if (!props.pins || props.pins.length === 0) {
-    return <Text>No data</Text>;
-  }
 
-  const uniquePins = Object.values(
-    props.pins.reduce(
-      (acc, pin) => {
-        const key = `${pin.latitude.toFixed(7)},${pin.longitude.toFixed(7)}`;
-        if (!acc[key] || acc[key].timestamp < pin.timestamp) {
-          acc[key] = pin;
-        }
-        return acc;
-      },
-      {} as Record<string, (typeof props.pins)[0]>,
-    ),
+  // `null` follows the latest fix; a number is a moment the viewer scrubbed to.
+  const [scrubMillis, setScrubMillis] = useState<number | null>(null);
+
+  // Ascending and unit-normalised, which the slider needs and `props.pins` is neither:
+  // the loader returns newest first, and some legacy rows are stored in seconds.
+  const scrubberPoints = useMemo(
+    () =>
+      props.pins
+        .map((pin) => ({
+          latitude: pin.latitude,
+          longitude: pin.longitude,
+          timestampMillis: toMillisTimestamp(pin.timestamp),
+        }))
+        .sort((a, b) => a.timestampMillis - b.timestampMillis),
+    [props.pins],
   );
 
-  const highestTimestampPin = props.pins.reduce((maxPin, currentPin) => {
-    return currentPin.timestamp > maxPin.timestamp ? currentPin : maxPin;
-  }, props.pins[0]);
-
-  const groupedTimingPoints = props.timingPoints.reduce(
-    (acc, timingPoint) => {
-      const groupName = timingPoint.group ?? "Other Timing Points";
-      if (!acc[groupName]) acc[groupName] = [];
-      acc[groupName].push(timingPoint);
-      return acc;
-    },
-    {} as Record<string, Array<(typeof props.timingPoints)[number]>>,
-  );
+  const scrubbedPoint =
+    scrubMillis === null ? null : findPointAt(scrubberPoints, scrubMillis);
 
   const viewportBounds = useMemo(
     () =>
@@ -250,11 +242,44 @@ export const Map = (props: MapProps) => {
     [config.zoomOutPaddingRatio, props.pins, props.timingPoints],
   );
 
+  // Every hook above runs unconditionally. The early returns below must stay after them,
+  // or a render with no pins would call fewer hooks than the render that follows it.
+  if (!props.pins || props.pins.length === 0) {
+    return <Text>No data</Text>;
+  }
+
+  const uniquePins = Object.values(
+    props.pins.reduce(
+      (acc, pin) => {
+        const key = `${pin.latitude.toFixed(7)},${pin.longitude.toFixed(7)}`;
+        if (!acc[key] || acc[key].timestamp < pin.timestamp) {
+          acc[key] = pin;
+        }
+        return acc;
+      },
+      {} as Record<string, (typeof props.pins)[0]>,
+    ),
+  );
+
+  const highestTimestampPin = props.pins.reduce((maxPin, currentPin) => {
+    return currentPin.timestamp > maxPin.timestamp ? currentPin : maxPin;
+  }, props.pins[0]);
+
+  const groupedTimingPoints = props.timingPoints.reduce(
+    (acc, timingPoint) => {
+      const groupName = timingPoint.group ?? "Other Timing Points";
+      if (!acc[groupName]) acc[groupName] = [];
+      acc[groupName].push(timingPoint);
+      return acc;
+    },
+    {} as Record<string, Array<(typeof props.timingPoints)[number]>>,
+  );
+
   if (!width || !height || width === 0 || height === 0)
     return null; // You can only render the map once, subsequent re-renders won't do anything - so we need to wait until we have the viewport size
   else
     return (
-      <div style={{ height: height, width: width }}>
+      <div style={{ height: height, width: width, position: "relative" }}>
         <MapContainer
           center={[highestTimestampPin.latitude, highestTimestampPin.longitude]}
           zoom={props.zoom}
@@ -359,7 +384,31 @@ export const Map = (props: MapProps) => {
               </Link>
             </Popup>
           </Marker>
-          <LayersControl position="bottomleft">
+          {scrubbedPoint ? (
+            <Marker
+              // Re-keyed per position so Leaflet moves the marker as the slider is dragged.
+              key={`scrub-${scrubbedPoint.timestampMillis}`}
+              position={[scrubbedPoint.latitude, scrubbedPoint.longitude]}
+              zIndexOffset={1100}
+              icon={tablerMapIcon(
+                <ThemeIcon radius="md" size="lg" color="orange">
+                  {getDeviceIcon(props.deviceIcon)}
+                </ThemeIcon>,
+              )}
+            >
+              <Popup>
+                <Text fw={600}>
+                  {formatDateTimeMed(scrubbedPoint.timestampMillis)}
+                </Text>
+                <Text size="sm">
+                  {scrubbedPoint.latitude.toFixed(5)},{" "}
+                  {scrubbedPoint.longitude.toFixed(5)}
+                </Text>
+              </Popup>
+            </Marker>
+          ) : null}
+          {/* Moved off the bottom edge, which the scrubber now occupies. */}
+          <LayersControl position="topleft">
             {Object.entries(groupedTimingPoints).map(([groupName, points]) => (
               <LayersControl.Overlay
                 name={groupName}
@@ -463,6 +512,27 @@ export const Map = (props: MapProps) => {
             </div>
           </div>
         </MapContainer>
+        {/*
+          Outside MapContainer on purpose. Leaflet does not stop pointer events from
+          reaching the map for arbitrary children of its control panes, so a slider
+          rendered inside would pan the map as it was dragged. Sitting above the
+          attribution strip rather than flush to the bottom so that stays readable.
+        */}
+        <div
+          style={{
+            position: "absolute",
+            left: 8,
+            right: 8,
+            bottom: 24,
+            zIndex: 1000,
+          }}
+        >
+          <TimeScrubber
+            points={scrubberPoints}
+            value={scrubMillis}
+            onChange={setScrubMillis}
+          />
+        </div>
       </div>
     );
 };
