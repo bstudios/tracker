@@ -44,6 +44,13 @@
       "name": "EMAIL",
     },
   ],
+  // Rendered logbook PDFs for finished days, so a day is only ever rendered once.
+  "r2_buckets": [
+    {
+      "binding": "LOGBOOK_ARCHIVE",
+      "bucket_name": "tracker-logbook-archive",
+    },
+  ],
   // Neither of the two bindings above is marked `"remote": true`, even though both need the
   // real service to do anything (Browser Rendering has no local simulator, and the local
   // email simulator cannot serialise ArrayBuffer attachments). Setting it would make every

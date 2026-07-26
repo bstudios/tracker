@@ -5,7 +5,10 @@ import { drizzle } from "drizzle-orm/d1";
 import { DateTime } from "luxon";
 import * as schema from "~/database/schema.d";
 import { loadLogbook } from "~/logbook/loadLogbook.server";
-import { createLogbookPrintToken } from "~/logbook/printToken.server";
+import {
+  getOrRenderLogbookPdf,
+  logbookPdfFilename,
+} from "~/logbook/pdfArchive.server";
 import {
   renderLogbookEmailHtml,
   renderLogbookText,
@@ -97,22 +100,17 @@ export class DailyLogbookEmailWorkflow extends WorkflowEntrypoint<
         });
         if (!logbook) return { device: device.name, sent: 0, failed: 0 };
 
-        const token = await createLogbookPrintToken({
-          secret: this.env.LOGBOOK_PDF_SIGNING_SECRET,
+        // Renders and stores in R2, so the download link on the logbook page for this day
+        // is already warm and never triggers a second render.
+        const pdf = await getOrRenderLogbookPdf(this.env, {
           deviceId: device.id,
           dateString,
         });
-        const printUrl = `${this.env.PUBLIC_BASE_URL}/print/logbook/${device.id}/${dateString}?token=${token}`;
-
-        const pdfResponse = await this.env.BROWSER.quickAction("pdf", {
-          url: printUrl,
-        });
-        if (!pdfResponse.ok) {
+        if (!pdf) {
           throw new Error(
-            `PDF render failed for ${device.name}: ${pdfResponse.status}`,
+            `Browser Rendering unavailable, cannot build the logbook PDF for ${device.name}`,
           );
         }
-        const pdf = await pdfResponse.arrayBuffer();
 
         const documentArgs = {
           deviceName: logbook.deviceName,
@@ -137,8 +135,8 @@ export class DailyLogbookEmailWorkflow extends WorkflowEntrypoint<
               text: renderLogbookText(documentArgs),
               attachments: [
                 {
-                  filename: `logbook-${logbook.deviceName.replace(/[^\w-]+/g, "-")}-${dateString}.pdf`,
-                  content: pdf,
+                  filename: logbookPdfFilename(logbook.deviceName, dateString),
+                  content: pdf.body,
                   type: "application/pdf",
                   disposition: "attachment",
                 },

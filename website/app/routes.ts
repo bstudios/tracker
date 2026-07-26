@@ -17,6 +17,7 @@ export default [
   route(":password/:date", "./routes/date/protectedLayout.tsx", [
     route("live", "./routes/date/map.tsx"),
     route("logbook", "./routes/date/logbook.tsx"),
+    route("logbook.pdf", "./routes/date/logbookPdf.ts"),
     route("table/:cursor?", "./routes/date/table.tsx"),
     route("timings", "./routes/date/timingPoints.tsx"),
     route(

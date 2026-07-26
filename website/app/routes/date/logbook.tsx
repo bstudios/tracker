@@ -14,7 +14,11 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconFileTypePdf,
+} from "@tabler/icons-react";
 import { eq } from "drizzle-orm";
 import { useState } from "react";
 import {
@@ -31,6 +35,7 @@ import {
   loadLogbook,
 } from "~/logbook/loadLogbook.server";
 import { parseLogbookConfig } from "~/logbook/config";
+import { isDayComplete } from "~/logbook/pdfArchive.server";
 import { formatTime24, formatUtcDay } from "~/utils/dateTime";
 import { rebuildTimingPointH3Coverage } from "~/utils/timingPointH3";
 import type { Route } from "./+types/logbook";
@@ -59,6 +64,8 @@ export async function loader({ context }: Route.LoaderArgs) {
     deviceName: logbook?.deviceName ?? null,
     entries: logbook?.entries ?? [],
     eventCount: logbook?.eventCount ?? 0,
+    // Today's log is still growing, so there is nothing settled to download yet.
+    canDownloadPdf: isDayComplete(urlDate) && (logbook?.eventCount ?? 0) > 0,
     ...adjacent,
   };
 }
@@ -143,6 +150,7 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
     eventCount,
     previousDate,
     nextDate,
+    canDownloadPdf,
   } = loaderData;
 
   const [namingEntry, setNamingEntry] = useState<LogbookEntry | null>(null);
@@ -179,6 +187,17 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
       >
         {nextDate ?? "No later data"}
       </Button>
+      {canDownloadPdf ? (
+        <Button
+          component="a"
+          href={`/${password}/${urlDate}/logbook.pdf`}
+          variant="subtle"
+          size="compact-md"
+          leftSection={<IconFileTypePdf size={16} />}
+        >
+          Download PDF
+        </Button>
+      ) : null}
     </Group>
   );
 
