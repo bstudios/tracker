@@ -156,9 +156,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
 
       {loaderData.devices.length === 0 && (
         <Text c="red" mb="md">
-          No devices found. Create one in{" "}
-          <Link to="/admin/devices">Device administration</Link> before managing
-          passwords.
+          No devices found. Create one in <Link to="/admin/devices">Device administration</Link> before managing passwords.
         </Text>
       )}
 
