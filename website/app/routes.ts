@@ -13,6 +13,7 @@ export default [
   ...prefix(":password", [index("./routes/passwordDateSelector.tsx")]),
   route(":password/:date", "./routes/date/protectedLayout.tsx", [
     route("live", "./routes/date/map.tsx"),
+    route("logbook", "./routes/date/logbook.tsx"),
     route("table/:cursor?", "./routes/date/table.tsx"),
     route("timings", "./routes/date/timingPoints.tsx"),
     route(

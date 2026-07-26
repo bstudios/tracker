@@ -27,15 +27,17 @@ export default function ProtectedLayout() {
   const current: DatePage =
     location.pathname === basePath
       ? "menu"
-      : location.pathname.startsWith(`${basePath}/analysis`)
-        ? "analysis"
-        : location.pathname.startsWith(`${basePath}/timingsHistoric`)
-          ? "historic"
-          : location.pathname.startsWith(`${basePath}/timings`)
-            ? "timings"
-            : location.pathname.startsWith(`${basePath}/live`)
-              ? "live"
-              : "none";
+      : location.pathname.startsWith(`${basePath}/logbook`)
+        ? "logbook"
+        : location.pathname.startsWith(`${basePath}/analysis`)
+          ? "analysis"
+          : location.pathname.startsWith(`${basePath}/timingsHistoric`)
+            ? "historic"
+            : location.pathname.startsWith(`${basePath}/timings`)
+              ? "timings"
+              : location.pathname.startsWith(`${basePath}/live`)
+                ? "live"
+                : "none";
 
   return (
     <>

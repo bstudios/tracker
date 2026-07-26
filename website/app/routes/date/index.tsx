@@ -77,6 +77,15 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               </Button>
               <Button
                 component={Link}
+                to={`/${loaderData.password}/${loaderData.urlDate}/logbook`}
+                variant="light"
+                justify="flex-start"
+                fullWidth
+              >
+                Logbook
+              </Button>
+              <Button
+                component={Link}
                 to={`/${loaderData.password}/${loaderData.urlDate}/timings`}
                 variant="light"
                 justify="flex-start"

@@ -2,7 +2,7 @@ import { Button, Group, SimpleGrid, Stack, Text } from "@mantine/core";
 import { Link } from "react-router";
 
 export type DatePage =
-  "menu" | "live" | "timings" | "analysis" | "historic" | "none";
+  "menu" | "live" | "logbook" | "timings" | "analysis" | "historic" | "none";
 
 interface DatePageNavProps {
   password: string;
@@ -14,7 +14,7 @@ export function DatePageNav({ password, urlDate, current }: DatePageNavProps) {
   const basePath = `/${password}/${urlDate}`;
 
   return (
-    <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} spacing="xs">
+    <SimpleGrid cols={{ base: 1, xs: 2, md: 5 }} spacing="xs">
       <Button
         component={Link}
         to={basePath}
@@ -30,6 +30,14 @@ export function DatePageNav({ password, urlDate, current }: DatePageNavProps) {
         fullWidth
       >
         Live tracking map
+      </Button>
+      <Button
+        component={Link}
+        to={`${basePath}/logbook`}
+        variant={current === "logbook" ? "filled" : "light"}
+        fullWidth
+      >
+        Logbook
       </Button>
       <Button
         component={Link}
