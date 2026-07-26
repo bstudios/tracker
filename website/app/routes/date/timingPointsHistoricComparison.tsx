@@ -1,9 +1,13 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Container, Table, Title } from "@mantine/core";
-import { asc, eq, or, sql } from "drizzle-orm";
+import { asc, sql } from "drizzle-orm";
 import { type MetaFunction } from "react-router";
-import * as Schema from "~/database/schema.d";
 import { formatTime24 } from "~/utils/dateTime";
+import {
+  buildTimingPointMatchCtes,
+  parseTimingPointEvents,
+  type TimingPointEvent,
+} from "~/utils/timingPointMatches";
 import type { Route } from "./+types/timingPointsHistoricComparison";
 
 export const meta: MetaFunction = () => {
@@ -15,144 +19,31 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
 
-  // Select the timing points belonging to the device we are looking at
-  const selectedTimingPoints = db.$with("selected_timing_points").as(
-    db
-      .select({
-        id: Schema.TimingPoints.id,
-        name: Schema.TimingPoints.name,
-        order: Schema.TimingPoints.order,
-        timing_point_latitude: sql<number>`${Schema.TimingPoints.latitude}`.as(
-          "timing_point_latitude",
-        ),
-        timing_point_longitude:
-          sql<number>`${Schema.TimingPoints.longitude}`.as(
-            "timing_point_longitude",
-          ),
-        radius: Schema.TimingPoints.radius,
-      })
-      .from(Schema.TimingPoints)
-      .where(eq(Schema.TimingPoints.deviceId, deviceId)),
-  );
+  const {
+    ctes,
+    selectedTimingPoints,
+    rankedEvents,
+    aggregatedEventsSql,
+    arrivalOrDepartureOnly,
+  } = buildTimingPointMatchCtes(db, {
+    deviceId,
+    // No date filter: timing points are no longer pinned to dates, so the dates we compare
+    // against are simply whichever dates this device actually has matches on.
+    partitionByDate: true,
+  });
 
-  // All of the device's events near its timing points, across every date it has data for.
-  // Timing points are no longer pinned to dates, so the dates we compare against are simply
-  // whichever dates this device actually has timing point matches on.
-  const dateEvents = db.$with("date_events").as(
-    db
-      .select({
-        timing_point_id: selectedTimingPoints.id,
-        name: selectedTimingPoints.name,
-        order: selectedTimingPoints.order,
-        timing_point_latitude:
-          sql<number>`${selectedTimingPoints.timing_point_latitude}`.as(
-            "timing_point_latitude",
-          ),
-        timing_point_longitude:
-          sql<number>`${selectedTimingPoints.timing_point_longitude}`.as(
-            "timing_point_longitude",
-          ),
-        radius: selectedTimingPoints.radius,
-        date: Schema.Events.dateString,
-        event_id: Schema.Events.id,
-        timestamp: Schema.Events.timestamp,
-        event_latitude: sql<number>`${Schema.Events.latitude}`.as(
-          "event_latitude",
-        ),
-        event_longitude: sql<number>`${Schema.Events.longitude}`.as(
-          "event_longitude",
-        ),
-      })
-      .from(selectedTimingPoints)
-      .innerJoin(
-        Schema.TimingPointH3Cells,
-        eq(Schema.TimingPointH3Cells.timingPointId, selectedTimingPoints.id),
-      )
-      .innerJoin(
-        Schema.Events,
-        eq(Schema.Events.h3Index, Schema.TimingPointH3Cells.h3Index),
-      )
-      .where(eq(Schema.Events.deviceId, deviceId)),
-  );
-
-  // Filter events that are within the timing point radius for that date
-  const matchingEvents = db.$with("matching_events").as(
-    db
-      .select({
-        timing_point_id: dateEvents.timing_point_id,
-        name: dateEvents.name,
-        order: dateEvents.order,
-        date: dateEvents.date,
-        event_id: dateEvents.event_id,
-        timestamp: dateEvents.timestamp,
-      })
-      .from(dateEvents)
-      .where(
-        sql`(${6371000 * 2} * ASIN(MIN(1.0, SQRT(
-          SIN((${dateEvents.event_latitude} - ${
-            dateEvents.timing_point_latitude
-          }) * 0.00872664626) *
-          SIN((${dateEvents.event_latitude} - ${
-            dateEvents.timing_point_latitude
-          }) * 0.00872664626) +
-          COS(${dateEvents.timing_point_latitude} * 0.01745329252) *
-          COS(${dateEvents.event_latitude} * 0.01745329252) *
-          SIN((${dateEvents.event_longitude} - ${
-            dateEvents.timing_point_longitude
-          }) * 0.00872664626) *
-          SIN((${dateEvents.event_longitude} - ${
-            dateEvents.timing_point_longitude
-          }) * 0.00872664626)
-        )))) <= ${dateEvents.radius}`,
-      ),
-  );
-
-  // Rank events per timing_point/date to determine arrival/departure
-  const rankedEvents = db.$with("ranked_events").as(
-    db
-      .select({
-        timing_point_id: matchingEvents.timing_point_id,
-        name: matchingEvents.name,
-        order: matchingEvents.order,
-        date: matchingEvents.date,
-        event_id: matchingEvents.event_id,
-        timestamp: matchingEvents.timestamp,
-        row_number_asc:
-          sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id}, ${matchingEvents.date} ORDER BY ${matchingEvents.timestamp} ASC)`.as(
-            "row_number_asc",
-          ),
-        row_number_desc:
-          sql<number>`ROW_NUMBER() OVER(PARTITION BY ${matchingEvents.timing_point_id}, ${matchingEvents.date} ORDER BY ${matchingEvents.timestamp} DESC)`.as(
-            "row_number_desc",
-          ),
-        event_count:
-          sql<number>`COUNT(*) OVER(PARTITION BY ${matchingEvents.timing_point_id}, ${matchingEvents.date})`.as(
-            "event_count",
-          ),
-      })
-      .from(matchingEvents),
-  );
-
-  // For each timing_point/date, keep only arrival/departure/passage and aggregate
+  // One row per timing point per date, carrying that date's arrival/departure.
   const timingPointsByDate = await db
-    .with(selectedTimingPoints, dateEvents, matchingEvents, rankedEvents)
+    .with(...ctes)
     .select({
       timing_point_id: rankedEvents.timing_point_id,
       name: rankedEvents.name,
       order: rankedEvents.order,
       date: rankedEvents.date,
-      events:
-        sql<string>`json_group_array(json_object('id', ${rankedEvents.event_id}, 'timestamp', ${rankedEvents.timestamp}, 'type', CASE WHEN ${rankedEvents.event_count} = 1 THEN 'passage' WHEN ${rankedEvents.row_number_asc} = 1 THEN 'arrival' WHEN ${rankedEvents.row_number_desc} = 1 THEN 'departure' END))`.as(
-          "events",
-        ),
+      events: aggregatedEventsSql.as("events"),
     })
     .from(rankedEvents)
-    .where(
-      or(
-        eq(rankedEvents.row_number_asc, 1),
-        eq(rankedEvents.row_number_desc, 1),
-      ),
-    )
+    .where(arrivalOrDepartureOnly)
     .groupBy(
       rankedEvents.timing_point_id,
       rankedEvents.name,
@@ -163,7 +54,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   // Also fetch all of the device's timing points (even if they have no events)
   const deviceTimingPoints = await db
-    .with(selectedTimingPoints)
+    .with(...ctes)
     .select({
       id: selectedTimingPoints.id,
       name: selectedTimingPoints.name,
@@ -187,14 +78,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     {
       name: string;
       order: number;
-      byDate: Record<
-        string,
-        {
-          id: number;
-          timestamp: number;
-          type: "passage" | "arrival" | "departure";
-        }[]
-      >;
+      byDate: Record<string, TimingPointEvent[]>;
     }
   > = {};
 
@@ -205,11 +89,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     date: string;
     events: string;
   }[]) {
-    const events = JSON.parse(row.events) as {
-      id: number;
-      timestamp: number;
-      type: "passage" | "arrival" | "departure";
-    }[];
+    const events = parseTimingPointEvents(row.events);
     if (!grouped[row.timing_point_id]) {
       grouped[row.timing_point_id] = {
         name: row.name,
