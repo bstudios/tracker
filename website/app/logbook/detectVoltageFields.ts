@@ -35,62 +35,6 @@ export const buildJsonPath = (segments: string[]) =>
   `$${segments.map((segment) => `.${quoteJsonPathSegment(segment)}`).join("")}`;
 
 /**
- * Read a value out of an already-parsed event `data` object using a SQLite JSON path.
- *
- * Used so the logbook builder and the database agree on what a configured path means.
- * Only the subset of the syntax the settings page can produce is supported: a `$` root
- * followed by dot-separated, optionally quoted, object keys. Array indexing is not
- * supported, and an unparseable path yields `undefined` rather than throwing.
- */
-export const readJsonPath = (source: unknown, jsonPath: string): unknown => {
-  const trimmed = jsonPath.trim();
-  if (!trimmed.startsWith("$")) return undefined;
-
-  const segments: string[] = [];
-  let index = 1;
-
-  while (index < trimmed.length) {
-    if (trimmed[index] !== ".") return undefined;
-    index += 1;
-
-    if (trimmed[index] === '"') {
-      index += 1;
-      let segment = "";
-      while (index < trimmed.length && trimmed[index] !== '"') {
-        if (trimmed[index] === "\\") index += 1;
-        segment += trimmed[index];
-        index += 1;
-      }
-      if (trimmed[index] !== '"') return undefined;
-      index += 1;
-      segments.push(segment);
-      continue;
-    }
-
-    let segment = "";
-    while (index < trimmed.length && trimmed[index] !== ".") {
-      segment += trimmed[index];
-      index += 1;
-    }
-    if (segment.length === 0) return undefined;
-    segments.push(segment);
-  }
-
-  let current: unknown = source;
-  for (const segment of segments) {
-    if (
-      typeof current !== "object" ||
-      current === null ||
-      Array.isArray(current)
-    ) {
-      return undefined;
-    }
-    current = (current as Record<string, unknown>)[segment];
-  }
-  return current;
-};
-
-/**
  * List every numeric leaf across a sample of event `data` objects, newest first.
  *
  * Booleans are excluded: `true`/`false` are not numbers in JSON, but `charging` would

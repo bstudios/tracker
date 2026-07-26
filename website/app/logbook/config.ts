@@ -114,8 +114,6 @@ export type LogbookVoltageBand = LogbookVoltageSource["bands"][number];
 export const parseLogbookConfig = (raw: unknown): LogbookConfig =>
   logbookConfigSchema.parse(raw ?? {});
 
-export const LOGBOOK_CONFIG_DEFAULTS: LogbookConfig = parseLogbookConfig({});
-
 /** A worked example for the admin page's empty state. */
 export const LOGBOOK_CONFIG_EXAMPLE = JSON.stringify(
   {
@@ -144,14 +142,3 @@ export const LOGBOOK_CONFIG_EXAMPLE = JSON.stringify(
   null,
   2,
 );
-
-/** The band a reading falls into, or `null` when it is outside every configured band. */
-export const bandForVoltage = (
-  source: LogbookVoltageSource,
-  value: number,
-): LogbookVoltageBand | null =>
-  source.bands.find(
-    (band) =>
-      (band.min === undefined || value >= band.min) &&
-      (band.max === undefined || value < band.max),
-  ) ?? null;
