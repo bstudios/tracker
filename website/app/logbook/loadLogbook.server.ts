@@ -23,7 +23,20 @@ export type LoadedLogbook = {
   entries: LogbookEntry[];
   config: LogbookConfig;
   eventCount: number;
+  /** True when the day had more fixes than `MAX_EVENTS_PER_DAY` and was cut short. */
+  truncated: boolean;
 };
+
+/**
+ * Ceiling on how many fixes one day's log is built from.
+ *
+ * Devices in normal use report every 20-30 seconds, so a full day is three to four
+ * thousand rows and this is roughly five times the headroom needed. It exists for the
+ * misconfigured case — a tracker stuck reporting every second would otherwise pull ~86,000
+ * rows through a worker with a fixed memory and CPU budget. Hitting it truncates the day
+ * and says so, rather than timing out or quietly lying about when the boat got in.
+ */
+const MAX_EVENTS_PER_DAY = 20_000;
 
 /**
  * Read the device's config, tolerating a row that no longer matches the schema.
@@ -76,7 +89,9 @@ export async function loadLogbook(
           eq(Schema.Events.dateString, dateString),
         ),
       )
-      .orderBy(asc(Schema.Events.timestamp)),
+      .orderBy(asc(Schema.Events.timestamp))
+      // One over the cap, so a full page tells us the day was truncated.
+      .limit(MAX_EVENTS_PER_DAY + 1),
     db
       .select({
         id: Schema.TimingPoints.id,
@@ -94,13 +109,17 @@ export async function loadLogbook(
     }),
   ]);
 
-  const events: LogbookEvent[] = rows.map((row) => ({
-    // Some legacy rows were written in seconds or microseconds; normalise before any
-    // duration is measured against them.
-    timestamp: toMillisTimestamp(row.timestamp),
-    latitude: row.latitude,
-    longitude: row.longitude,
-  }));
+  const truncated = rows.length > MAX_EVENTS_PER_DAY;
+
+  const events: LogbookEvent[] = rows
+    .slice(0, MAX_EVENTS_PER_DAY)
+    .map((row) => ({
+      // Some legacy rows were written in seconds or microseconds; normalise before any
+      // duration is measured against them.
+      timestamp: toMillisTimestamp(row.timestamp),
+      latitude: row.latitude,
+      longitude: row.longitude,
+    }));
 
   return {
     deviceName: device.name,
@@ -115,6 +134,7 @@ export async function loadLogbook(
     }),
     config,
     eventCount: events.length,
+    truncated,
   };
 }
 

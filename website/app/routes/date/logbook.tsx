@@ -71,6 +71,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     deviceName: logbook?.deviceName ?? null,
     entries: logbook?.entries ?? [],
     eventCount: logbook?.eventCount ?? 0,
+    truncated: logbook?.truncated ?? false,
     // Today's log is still growing, so there is nothing settled to download yet.
     canDownloadPdf: isDayComplete(urlDate) && (logbook?.eventCount ?? 0) > 0,
     ...adjacent,
@@ -162,6 +163,7 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
     previousDate,
     nextDate,
     canDownloadPdf,
+    truncated,
   } = loaderData;
 
   const [namingEntry, setNamingEntry] = useState<LogbookEntry | null>(null);
@@ -242,6 +244,14 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
 
         {actionData?.error ? (
           <Alert color="red">{actionData.error}</Alert>
+        ) : null}
+
+        {truncated ? (
+          <Alert color="yellow" title="Partial day">
+            This device reported more positions than one log can be built from,
+            so only the earliest {eventCount.toLocaleString()} are included.
+            Later entries for this day are missing.
+          </Alert>
         ) : null}
 
         {entries.length === 0 ? (

@@ -117,6 +117,7 @@ export class DailyLogbookEmailWorkflow extends WorkflowEntrypoint<
           dateString,
           entries: logbook.entries,
           eventCount: logbook.eventCount,
+          truncated: logbook.truncated,
         };
 
         let sent = 0;

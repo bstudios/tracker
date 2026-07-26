@@ -53,6 +53,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
       dateString,
       entries: logbook.entries,
       eventCount: logbook.eventCount,
+      truncated: logbook.truncated,
     }),
     {
       headers: {

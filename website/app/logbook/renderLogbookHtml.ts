@@ -58,6 +58,8 @@ type LogbookDocumentArgs = {
   dateString: string;
   entries: LogbookEntry[];
   eventCount: number;
+  /** Say so on the document itself rather than letting it look like a complete day. */
+  truncated?: boolean;
 };
 
 /** A complete printable document, for Browser Rendering to turn into a PDF. */
@@ -66,6 +68,7 @@ export const renderLogbookDocument = ({
   dateString,
   entries,
   eventCount,
+  truncated,
 }: LogbookDocumentArgs) => `<!doctype html>
 <html lang="en">
 <head>
@@ -92,6 +95,8 @@ export const renderLogbookDocument = ({
   .kind { white-space: nowrap; color: #555; width: 14%; }
   .detail { color: #555; }
   .empty { color: #555; font-style: italic; }
+  .warning { border: 1px solid #b58100; background: #fff8e1; color: #6b4e00;
+             padding: 8px 10px; border-radius: 4px; margin-bottom: 14px; font-size: 10pt; }
   footer { margin-top: 22px; color: #777; font-size: 9pt; }
 </style>
 </head>
@@ -102,6 +107,13 @@ export const renderLogbookDocument = ({
     ${eventCount} position report${eventCount === 1 ? "" : "s"} condensed to
     ${entries.length} entr${entries.length === 1 ? "y" : "ies"} · times shown local
   </p>
+  ${
+    truncated
+      ? `<p class="warning"><strong>Partial day.</strong> This device reported more
+         positions than one log can be built from, so only the earliest
+         ${eventCount} are included.</p>`
+      : ""
+  }
   ${renderTable(entries)}
   <footer>Generated automatically from tracked positions.</footer>
 </body>
