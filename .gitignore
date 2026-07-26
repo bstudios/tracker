@@ -26,3 +26,6 @@ node_modules
 website/.react-router
 website/build
 *.tsbuildinfo
+# Local worker secrets (wrangler dev)
+website/.dev.vars
+website/.dev.vars.*

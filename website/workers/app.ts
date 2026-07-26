@@ -4,6 +4,11 @@ import { drizzleLogger } from "../database/logger";
 import * as schema from "../database/schema.d";
 import { cloudflareContext, dbContext } from "../app/routeContext";
 
+// Workflow classes have to be exported from the worker's entry module for the runtime to
+// find them. The nightly run is driven by `schedules` on its wrangler binding, so there is
+// no `scheduled()` handler here.
+export { DailyLogbookEmailWorkflow } from "./logbookEmailWorkflow";
+
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
   import.meta.env.MODE,
@@ -20,12 +25,5 @@ export default {
     routerContext.set(dbContext, db);
 
     return requestHandler(request, routerContext);
-  },
-  async scheduled(event, env, ctx) {
-    const db = drizzle(env.DB, {
-      schema,
-      logger: drizzleLogger,
-    });
-    console.log("Scheduled event", event);
   },
 } satisfies ExportedHandler<Env>;

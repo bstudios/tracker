@@ -20,7 +20,36 @@
   "vars": {
     "CLOUDFLARE_ACCESS_POLICY_AUD": "3bf1c92ea8fe760b6ad94c57b40dcc84dbef8652050e52103d360517ca474372",
     "CLOUDFLARE_ACCESS_TEAM_DOMAIN": "bstudios.cloudflareaccess.com",
+    // Absolute origin the logbook workflow points Browser Rendering at.
+    "PUBLIC_BASE_URL": "https://tracker.bithell.studio",
+    "LOGBOOK_EMAIL_FROM": "logbook@bithell.studio",
   },
+  "workflows": [
+    {
+      "name": "daily-logbook-email",
+      "binding": "DAILY_LOGBOOK_EMAIL",
+      "class_name": "DailyLogbookEmailWorkflow",
+      // 00:05 UTC, sending the UTC day that has just ended — the same day boundary as
+      // events.date_string and every page in the app.
+      "schedules": ["5 0 * * *"],
+    },
+  ],
+  // Renders the signed /print/logbook page to a PDF.
+  "browser": {
+    "binding": "BROWSER",
+  },
+  // Cloudflare Email Service, used to send that PDF as an attachment.
+  "send_email": [
+    {
+      "name": "EMAIL",
+    },
+  ],
+  // Neither of the two bindings above is marked `"remote": true`, even though both need the
+  // real service to do anything (Browser Rendering has no local simulator, and the local
+  // email simulator cannot serialise ArrayBuffer attachments). Setting it would make every
+  // `npm run dev` open an authenticated remote proxy session, so the whole site would stop
+  // starting for anyone not logged in to Cloudflare. It is a dev-only flag with no effect
+  // on deploys — to exercise the workflow locally, run `wrangler dev --remote` instead.
   "ratelimits": [
     {
       "name": "TRACKER_PASSWORD_LOGIN_RATE_LIMITER",

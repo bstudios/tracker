@@ -22,6 +22,12 @@ export function getDb(context: Pick<RouterContextProvider, "get">) {
   return context.get(dbContext);
 }
 
+export function getCloudflareContext(
+  context: Pick<RouterContextProvider, "get">,
+) {
+  return context.get(cloudflareContext);
+}
+
 export function getPasswordRouteAccess(
   context: Pick<RouterContextProvider, "get">,
 ) {

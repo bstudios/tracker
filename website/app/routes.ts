@@ -10,6 +10,9 @@ export default [
   route("upload-traccar.json", "./routes/api/traccarUpload.ts"),
   route("upload-flespi.json", "./routes/api/flespiUpload.ts"),
   route("upload.json", "./routes/api/appUpload.ts"),
+  // Signed, session-less render target for the nightly logbook PDF. Above the :password
+  // routes so "print" is never read as a password.
+  route("print/logbook/:deviceId/:date", "./routes/print/logbookPrint.ts"),
   ...prefix(":password", [index("./routes/passwordDateSelector.tsx")]),
   route(":password/:date", "./routes/date/protectedLayout.tsx", [
     route("live", "./routes/date/map.tsx"),

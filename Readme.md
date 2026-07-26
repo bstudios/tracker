@@ -15,6 +15,36 @@ It uses a D1 database to store events, and a simple React Router 7 website to vi
 
 The logic for each is quite different, however as they share so many components they run on the same codebase. The website is in the `website/` folder.
 
+All times shown in the UI are rendered in `Europe/London` (see `DISPLAY_TIME_ZONE` in `website/app/utils/dateTime.ts`). Days are always UTC: `events.date_string` buckets by UTC day and `/:password/:date` means that UTC day, so a summer log for a given date runs 01:00 to 00:59 local.
+
+## Logbook
+
+`/:password/:date/logbook` condenses a day's position reports into the lines a ship's logbook carries — first and last report, arrivals and departures, timing points passed, and engine/charge changes — rather than one line per fix. Previous/next skip to the nearest day that actually has data.
+
+Stops and voltage bands are configured per device under **Admin → Devices → Logbook**. Leaving the config blank uses the defaults (stopped = 15 minutes within 100 m, no voltage lines). Voltage sources are addressed by JSON path into `events.data` because only the tracker's internal battery has a fixed field — engine/input voltage arrives as an unmapped flespi key under `data.other`. That admin page lists the numeric paths the device has actually reported so they can be copied rather than guessed.
+
+Anyone with the viewing password can name a stop, which creates a timing point at that position. Editing or deleting it afterwards needs admin access.
+
+### Daily email
+
+If a device has email recipients set on that same admin page, the `daily-logbook-email` Workflow runs at 00:05 UTC, renders the previous UTC day's logbook to a PDF with Browser Rendering, and emails it to each recipient. Devices with no recipients, or with no events that day, are skipped.
+
+The schedule lives on the Workflow binding in `wrangler.jsonc` (`schedules`), not as a worker cron trigger.
+
+Setup that cannot be done from the repository:
+
+- `cd website && npx wrangler secret put LOGBOOK_PDF_SIGNING_SECRET` — signs the `/print/logbook/:deviceId/:date` URLs the PDF is rendered from. Without it that route returns 500.
+- Onboard the sender domain (`LOGBOOK_EMAIL_FROM` in `wrangler.jsonc`) in Cloudflare Email Sending. The zone must use Cloudflare DNS.
+- Make sure the Cloudflare Access policy is scoped to `/admin` and not the whole zone, or Browser Rendering cannot fetch `/print/logbook/...`.
+
+For local development, put the secret in `website/.dev.vars` (gitignored):
+
+```
+LOGBOOK_PDF_SIGNING_SECRET=local-development-secret
+```
+
+The `BROWSER` and `EMAIL` bindings are deliberately **not** marked `"remote": true`, because that would make every `npm run dev` require Cloudflare credentials. Neither has a working local simulator, so to exercise the workflow end to end run `npx wrangler dev --remote`.
+
 ## Tracking Devices
 
 ### Expo App
