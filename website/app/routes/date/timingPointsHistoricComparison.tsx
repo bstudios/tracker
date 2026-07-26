@@ -1,9 +1,9 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Container, Table, Title } from "@mantine/core";
 import { asc, eq, or, sql } from "drizzle-orm";
-import { DateTime } from "luxon";
 import { type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
+import { formatTime24 } from "~/utils/dateTime";
 import type { Route } from "./+types/timingPointsHistoricComparison";
 
 export const meta: MetaFunction = () => {
@@ -306,9 +306,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                     if (events.length === 1 && events[0].type === "passage") {
                       return [
                         <Table.Td key={`${row.timing_point_id}-${d}-a`}>
-                          {DateTime.fromSeconds(events[0].timestamp / 1000, {
-                            zone: "Europe/London",
-                          }).toLocaleString(DateTime.TIME_24_SIMPLE)}
+                          {formatTime24(events[0].timestamp)}
                         </Table.Td>,
                         <Table.Td
                           key={`${row.timing_point_id}-${d}-d`}
@@ -337,9 +335,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                     ) {
                       return [
                         <Table.Td key={`${row.timing_point_id}-${d}-a`}>
-                          {DateTime.fromSeconds(arrivalEvent.timestamp / 1000, {
-                            zone: "Europe/London",
-                          }).toLocaleString(DateTime.TIME_24_SIMPLE)}
+                          {formatTime24(arrivalEvent.timestamp)}
                         </Table.Td>,
                         <Table.Td
                           key={`${row.timing_point_id}-${d}-d`}
@@ -348,14 +344,10 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                     }
                     return [
                       <Table.Td key={`${row.timing_point_id}-${d}-a`}>
-                        {DateTime.fromSeconds(arrivalEvent.timestamp / 1000, {
-                          zone: "Europe/London",
-                        }).toLocaleString(DateTime.TIME_24_SIMPLE)}
+                        {formatTime24(arrivalEvent.timestamp)}
                       </Table.Td>,
                       <Table.Td key={`${row.timing_point_id}-${d}-d`}>
-                        {DateTime.fromSeconds(departureEvent.timestamp / 1000, {
-                          zone: "Europe/London",
-                        }).toLocaleString(DateTime.TIME_24_SIMPLE)}
+                        {formatTime24(departureEvent.timestamp)}
                       </Table.Td>,
                     ];
                   })}

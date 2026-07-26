@@ -2,10 +2,10 @@ import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Button, Container, Group, Table, Text, Title } from "@mantine/core";
 import { IconBrandApple, IconBrandGoogleMaps } from "@tabler/icons-react";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
-import { DateTime } from "luxon";
 import { useEffect, useState } from "react";
 import { Link, useFetcher, type MetaFunction } from "react-router";
 import { Events } from "~/database/schema/Events";
+import { formatDateTimeMed } from "~/utils/dateTime";
 import type { Route } from "./+types/table";
 
 export const meta: MetaFunction = () => {
@@ -96,11 +96,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <Table.Tbody>
               {events.map((event) => (
                 <Table.Tr key={event.id}>
-                  <Table.Td>
-                    {DateTime.fromSeconds(event.timestamp / 1000, {
-                      zone: "Europe/London",
-                    }).toLocaleString(DateTime.DATETIME_MED)}
-                  </Table.Td>
+                  <Table.Td>{formatDateTimeMed(event.timestamp)}</Table.Td>
                   <Table.Td>{event.latitude}</Table.Td>
                   <Table.Td>{event.longitude}</Table.Td>
                   <Table.Td>

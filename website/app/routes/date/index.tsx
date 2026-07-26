@@ -8,10 +8,10 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
+import { formatUtcDay } from "~/utils/dateTime";
 import type { Route } from "./+types/index";
 
 export const meta: MetaFunction = () => {
@@ -19,8 +19,7 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { refDate, urlDate, password, deviceId } =
-    getPasswordRouteAccess(context);
+  const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
   const events = await getDb(context)
     .select({ id: Schema.Events.id })
     .from(Schema.Events)
@@ -33,7 +32,6 @@ export async function loader({ context }: Route.LoaderArgs) {
     .limit(1);
 
   return {
-    date: refDate.toISO(),
     urlDate,
     password,
     hasData: events.length > 0,
@@ -46,11 +44,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
       <Container fluid p="md">
         <Stack gap="md" align="center" py="xl">
           <Title order={2} ta="center">
-            No data received for{" "}
-            {loaderData.date
-              ? DateTime.fromISO(loaderData.date).toFormat("yyyy-MM-dd")
-              : loaderData.urlDate}{" "}
-            yet
+            No data received for {formatUtcDay(loaderData.urlDate)} yet
           </Title>
         </Stack>
       </Container>
@@ -61,10 +55,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
     <Container fluid p="md">
       <Stack gap="md">
         <Title order={2}>
-          Tracking menu for{" "}
-          {loaderData.date
-            ? DateTime.fromISO(loaderData.date).toFormat("yyyy-MM-dd")
-            : loaderData.urlDate}
+          Tracking menu for {formatUtcDay(loaderData.urlDate)}
         </Title>
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">

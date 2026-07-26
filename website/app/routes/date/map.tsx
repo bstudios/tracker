@@ -1,10 +1,10 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Center, Stack, Title } from "@mantine/core";
 import { and, desc, eq } from "drizzle-orm";
-import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
 import { LiveMap } from "~/components/LiveMap/LiveMap";
 import * as Schema from "~/database/schema.d";
+import { formatUtcDay } from "~/utils/dateTime";
 import type { Route } from "./+types/map";
 
 export const meta: MetaFunction = () => {
@@ -12,8 +12,7 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { refDate, urlDate, password, deviceId } =
-    getPasswordRouteAccess(context);
+  const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
 
   const [device] = await getDb(context)
     .select({ icon: Schema.Devices.icon })
@@ -50,7 +49,6 @@ export async function loader({ context }: Route.LoaderArgs) {
   // No point having an order by given that it's a map
 
   return {
-    date: refDate.toISO(),
     events,
     urlDate,
     timingPoints,
@@ -65,11 +63,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
       <Center>
         <Stack>
           <Title order={1} py="xl" px="xl">
-            No data received for{" "}
-            {loaderData.date
-              ? DateTime.fromISO(loaderData.date).toFormat("yyyy-MM-dd")
-              : undefined}{" "}
-            yet
+            No data received for {formatUtcDay(loaderData.urlDate)} yet
           </Title>
         </Stack>
       </Center>

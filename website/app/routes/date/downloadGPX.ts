@@ -2,6 +2,7 @@ import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { and, asc, eq } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { Events } from "~/database/schema/Events";
+import { toMillisTimestamp } from "~/utils/dateTime";
 import type { Route } from "./+types/downloadGPX";
 
 export async function loader({ context, params }: Route.LoaderArgs) {
@@ -63,7 +64,8 @@ export async function loader({ context, params }: Route.LoaderArgs) {
                       <ele>${databaseResult.data.location.altitude}</ele>
                       <speed>${databaseResult.data.location.speed}</speed>
                       <time>${DateTime.fromMillis(
-                        databaseResult.timestamp,
+                        toMillisTimestamp(databaseResult.timestamp),
+                        { zone: "utc" },
                       ).toISO()}</time>
                     </trkpt>`;
           });

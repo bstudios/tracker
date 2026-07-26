@@ -2,9 +2,9 @@ import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Anchor, Container, Group, Table, Title } from "@mantine/core";
 import { IconCoffee, IconGasStation, IconTrain } from "@tabler/icons-react";
 import { and, asc, eq, or, sql } from "drizzle-orm";
-import { DateTime } from "luxon";
 import { Link, type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
+import { formatDurationBetween, formatTime24 } from "~/utils/dateTime";
 import type { Route } from "./+types/timingPoints";
 
 export const meta: MetaFunction = () => {
@@ -251,9 +251,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                   {events.length === 0 && <Table.Td colSpan={2}></Table.Td>}
                   {events.length === 1 && events[0].type === "passage" && (
                     <Table.Td colSpan={2}>
-                      {DateTime.fromSeconds(events[0].timestamp / 1000, {
-                        zone: "Europe/London",
-                      }).toLocaleString(DateTime.TIME_24_SIMPLE)}
+                      {formatTime24(events[0].timestamp)}
                     </Table.Td>
                   )}
                   {events.length === 2 && (
@@ -275,36 +273,20 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                         )
                           return (
                             <Table.Td colSpan={2}>
-                              {DateTime.fromSeconds(
-                                arrivalEvent.timestamp / 1000,
-                                { zone: "Europe/London" },
-                              ).toLocaleString(DateTime.TIME_24_SIMPLE)}
+                              {formatTime24(arrivalEvent.timestamp)}
                             </Table.Td>
                           ); // If the difference between the arrival and departure times is less than 2 minutes, then just show the arrival time
                         return (
                           <>
                             <Table.Td>
-                              {DateTime.fromSeconds(
-                                arrivalEvent.timestamp / 1000,
-                                { zone: "Europe/London" },
-                              ).toLocaleString(DateTime.TIME_24_SIMPLE)}
+                              {formatTime24(arrivalEvent.timestamp)}
                             </Table.Td>
                             <Table.Td>
-                              {DateTime.fromSeconds(
-                                departureEvent.timestamp / 1000,
-                                { zone: "Europe/London" },
-                              ).toLocaleString(DateTime.TIME_24_SIMPLE)}{" "}
-                              (
-                              {DateTime.fromSeconds(
-                                departureEvent.timestamp / 1000,
-                                { zone: "Europe/London" },
-                              ).toRelative({
-                                base: DateTime.fromSeconds(
-                                  arrivalEvent.timestamp / 1000,
-                                  { zone: "Europe/London" },
-                                ),
-                                style: "short",
-                              })}
+                              {formatTime24(departureEvent.timestamp)} (
+                              {formatDurationBetween(
+                                arrivalEvent.timestamp,
+                                departureEvent.timestamp,
+                              )}
                               )
                             </Table.Td>
                           </>

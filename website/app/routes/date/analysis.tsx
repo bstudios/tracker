@@ -12,7 +12,6 @@ import {
 } from "@mantine/core";
 import { AreaChart } from "@mantine/charts";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { DateTime } from "luxon";
 import { memo, useEffect, useState } from "react";
 import { Link, type MetaFunction } from "react-router";
 import { AnalysisMap } from "~/components/AnalysisMap/AnalysisMap";
@@ -21,28 +20,14 @@ import {
   getSpeedRange,
 } from "~/components/AnalysisMap/speedColor";
 import * as Schema from "~/database/schema.d";
+import {
+  displayDateTime,
+  formatDateTimeWithSeconds,
+  toMillisTimestamp,
+} from "~/utils/dateTime";
 import type { Route } from "./+types/analysis";
 
 const MPS_TO_MPH = 2.2369362921;
-
-const toMillisTimestamp = (rawTimestamp: number) => {
-  const absTimestamp = Math.abs(rawTimestamp);
-
-  if (absTimestamp >= 1_000_000_000_000_000) {
-    return rawTimestamp / 1000;
-  }
-
-  if (absTimestamp >= 1_000_000_000_000) {
-    return rawTimestamp;
-  }
-
-  return rawTimestamp * 1000;
-};
-
-const formatChartTimestamp = (rawTimestamp: number) =>
-  DateTime.fromMillis(toMillisTimestamp(rawTimestamp), {
-    zone: "Europe/London",
-  }).toFormat("dd LLL yyyy, HH:mm:ss");
 
 const getYAxisStepMph = (maxSpeedMph: number) => {
   if (maxSpeedMph <= 10) return 1;
@@ -113,7 +98,7 @@ const SpeedChart = memo(function SpeedChart(props: {
       >
         <Text size="xs" c="dimmed">
           {Number.isFinite(rawTimestamp)
-            ? formatChartTimestamp(rawTimestamp)
+            ? formatDateTimeWithSeconds(rawTimestamp)
             : "-"}
         </Text>
         <Text size="sm" fw={600} c={speedEntry?.color}>
@@ -472,9 +457,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   const chartData = pointsWithDerivedSpeed.map((point) => ({
     pointId: point.id,
     timestampMillis: toMillisTimestamp(point.timestamp),
-    timestampLabel: DateTime.fromMillis(toMillisTimestamp(point.timestamp), {
-      zone: "Europe/London",
-    }).toFormat("HH:mm"),
+    timestampLabel: displayDateTime(point.timestamp).toFormat("HH:mm"),
     speedMph: Number((point.speedMps * MPS_TO_MPH).toFixed(2)),
   }));
 

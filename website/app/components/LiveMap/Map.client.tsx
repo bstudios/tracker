@@ -44,6 +44,11 @@ import { Link, useRevalidator } from "react-router";
 import { DEFAULT_DEVICE_ICON } from "~/constants/deviceIcons";
 import { theme } from "~/root";
 import {
+  DISPLAY_TIME_ZONE,
+  displayDateTime,
+  formatDateTimeMed,
+} from "~/utils/dateTime";
+import {
   createRestrictedViewportBounds,
   mapPerformanceConfig,
 } from "../mapPerformance";
@@ -303,13 +308,10 @@ export const Map = (props: MapProps) => {
             <Popup>
               <Text>
                 {(() => {
-                  const now = DateTime.now();
-                  const lastSeen = DateTime.fromSeconds(
-                    highestTimestampPin.timestamp / 1000,
-                    {
-                      zone: "local",
-                    },
+                  const lastSeen = displayDateTime(
+                    highestTimestampPin.timestamp,
                   );
+                  const now = DateTime.now().setZone(DISPLAY_TIME_ZONE);
                   // Only show if last seen is today and less than 12 hours ago
                   if (
                     now.hasSame(lastSeen, "day") &&
@@ -324,9 +326,7 @@ export const Map = (props: MapProps) => {
                   }
                   return null;
                 })()}
-                {DateTime.fromSeconds(highestTimestampPin.timestamp / 1000, {
-                  zone: "Europe/London",
-                }).toLocaleString(DateTime.DATETIME_MED)}
+                {formatDateTimeMed(highestTimestampPin.timestamp)}
               </Text>
               <Link
                 to={`https://www.google.com/maps?q=${highestTimestampPin.latitude},${highestTimestampPin.longitude}`}

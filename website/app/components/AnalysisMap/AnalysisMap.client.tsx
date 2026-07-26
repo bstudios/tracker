@@ -1,7 +1,6 @@
 import { MantineProvider, ThemeIcon } from "@mantine/core";
 import { divIcon } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { DateTime } from "luxon";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -12,6 +11,7 @@ import {
   TileLayer,
 } from "react-leaflet";
 import { theme } from "~/root";
+import { formatDateTimeMed } from "~/utils/dateTime";
 import {
   createRestrictedViewportBounds,
   mapPerformanceConfig,
@@ -38,20 +38,6 @@ export type AnalysisRouteSegment = {
   speedMph: number;
   isStop: boolean;
   positions: [number, number][];
-};
-
-const toMillisTimestamp = (rawTimestamp: number) => {
-  const absTimestamp = Math.abs(rawTimestamp);
-
-  if (absTimestamp >= 1_000_000_000_000_000) {
-    return rawTimestamp / 1000;
-  }
-
-  if (absTimestamp >= 1_000_000_000_000) {
-    return rawTimestamp;
-  }
-
-  return rawTimestamp * 1000;
 };
 
 const mapIcon = (children: ReactNode) =>
@@ -131,12 +117,7 @@ export function AnalysisMap(props: {
             )}
           >
             <Popup>
-              {DateTime.fromMillis(
-                toMillisTimestamp(highlightedPoint.timestamp),
-                {
-                  zone: "Europe/London",
-                },
-              ).toLocaleString(DateTime.DATETIME_MED)}
+              {formatDateTimeMed(highlightedPoint.timestamp)}
               <br />
               {(highlightedPoint.speedMps * 2.2369362921).toFixed(1)} mph
             </Popup>
