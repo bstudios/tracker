@@ -1,3 +1,4 @@
+import { formatDurationBetween } from "~/utils/dateTime";
 import { haversineMeters } from "~/utils/geo";
 import type { LogbookConfig } from "./config";
 import type { VoltageRun } from "./voltageRuns.server";
@@ -48,7 +49,6 @@ export type LogbookEntry = {
   detail?: string;
   latitude?: number;
   longitude?: number;
-  timingPointId?: number;
   /**
    * Set on a stationary arrival that did not happen at a known timing point, carrying the
    * position to offer as a new one. This is what lets the logbook page offer to name a
@@ -82,7 +82,7 @@ const formatPosition = (latitude: number, longitude: number) =>
  * Note this measures position, not speed, so a tracker that sleeps and reports twice three
  * hours apart from the same berth is correctly read as three hours stopped.
  */
-export const findStationarySegments = (
+const findStationarySegments = (
   events: LogbookEvent[],
   radiusMeters: number,
   minimumDurationMinutes: number,
@@ -145,7 +145,7 @@ type TimingPointVisit = {
  * so each fix is simply tested against all of them — the H3 pre-filter the SQL matcher
  * needs is not worth it over an in-memory list this small.
  */
-export const findTimingPointVisits = (
+const findTimingPointVisits = (
   events: LogbookEvent[],
   timingPoints: LogbookTimingPoint[],
 ): TimingPointVisit[] => {
@@ -311,7 +311,6 @@ export function buildLogbook(args: {
       title: `Arrived at ${place}`,
       latitude: segment.latitude,
       longitude: segment.longitude,
-      timingPointId: knownPoint?.id,
       nameable,
     });
 
@@ -319,9 +318,9 @@ export function buildLogbook(args: {
       timestamp: segment.endTimestamp,
       kind: "departed",
       title: `Departed ${place}`,
+      detail: `Stopped ${formatDurationBetween(segment.startTimestamp, segment.endTimestamp)}`,
       latitude: segment.latitude,
       longitude: segment.longitude,
-      timingPointId: knownPoint?.id,
     });
   }
 
@@ -338,7 +337,6 @@ export function buildLogbook(args: {
     const position = {
       latitude: visit.timingPoint.latitude,
       longitude: visit.timingPoint.longitude,
-      timingPointId: visit.timingPoint.id,
     };
 
     if (dwellMs <= minimumDwellMs) {
@@ -361,6 +359,7 @@ export function buildLogbook(args: {
       timestamp: visit.endTimestamp,
       kind: "timing-point-departed",
       title: `Departed ${visit.timingPoint.name}`,
+      detail: `Stopped ${formatDurationBetween(visit.startTimestamp, visit.endTimestamp)}`,
       ...position,
     });
   }

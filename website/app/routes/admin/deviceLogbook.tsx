@@ -45,7 +45,7 @@ const parseDeviceIdParam = (rawId: string | undefined) => {
  * not an attempt to decide what is deliverable. Delivery failures are reported per
  * recipient by the workflow instead.
  */
-export const parseEmailRecipients = (raw: string): string[] => {
+const parseEmailRecipients = (raw: string): string[] => {
   const recipients = raw
     .split(/[,\n]/)
     .map((entry) => entry.trim())
