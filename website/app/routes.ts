@@ -26,6 +26,7 @@ export default [
   route("admin", "./routes/admin/layout.tsx", [
     index("./routes/admin/index.tsx"),
     route("devices", "./routes/admin/devices.tsx"),
+    route("devices/:deviceId/logbook", "./routes/admin/deviceLogbook.tsx"),
     route("passwords", "./routes/admin/passwords.tsx"),
     route("data", "./routes/admin/data.tsx"),
     route(":date?/timingPointEditor", "./routes/admin/timingPointEditor.tsx"),

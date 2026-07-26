@@ -57,6 +57,13 @@
       "when": 1785086365312,
       "tag": "0007_lethal_layla_miller",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785089179622,
+      "tag": "0008_material_elektra",
+      "breakpoints": true
     }
   ]
 }

@@ -10,7 +10,7 @@ import {
   Title,
 } from "@mantine/core";
 import { eq, sql } from "drizzle-orm";
-import { Form, type MetaFunction } from "react-router";
+import { Form, Link, type MetaFunction } from "react-router";
 import {
   DEFAULT_DEVICE_ICON,
   DEVICE_ICON_OPTIONS,
@@ -314,6 +314,13 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                       }
                     >
                       Delete
+                    </Button>
+                    <Button
+                      component={Link}
+                      to={`/admin/devices/${device.id}/logbook`}
+                      variant="light"
+                    >
+                      Logbook
                     </Button>
                   </Group>
                 </Table.Td>
