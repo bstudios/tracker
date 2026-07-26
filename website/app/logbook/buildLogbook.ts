@@ -1,5 +1,6 @@
 import { haversineMeters } from "~/utils/geo";
-import { bandForVoltage, type LogbookConfig } from "./config";
+import type { LogbookConfig } from "./config";
+import type { VoltageRun } from "./voltageRuns.server";
 
 /**
  * Condensing a day of GPS fixes into a ship's logbook.
@@ -14,13 +15,10 @@ import { bandForVoltage, type LogbookConfig } from "./config";
  */
 
 export type LogbookEvent = {
-  id: number;
   /** Unix milliseconds. */
   timestamp: number;
   latitude: number;
   longitude: number;
-  /** Reading per configured voltage source, keyed by the source's `jsonPath`. */
-  voltages?: Record<string, number | null>;
 };
 
 export type LogbookTimingPoint = {
@@ -193,76 +191,48 @@ export const findTimingPointVisits = (
 /**
  * Emit a line each time a voltage source settles into a different band.
  *
- * A change is only reported once the new band has held for `minimumReadings` consecutive
- * readings, so the momentary dip as a starter motor engages does not get logged as the
- * engine stopping. Fixes missing the reading are skipped rather than treated as a change,
- * because a tracker that omits the field for one message has not told us anything.
+ * Input is one entry per *run* of consecutive same-band readings, grouped in SQL — see
+ * `voltageRuns.server.ts`. A run shorter than `minimumReadings` is ignored entirely, which
+ * is the hysteresis: the momentary dip as a starter motor engages is one or two readings
+ * and must not be logged as the engine stopping.
  *
- * The first band seen establishes the starting state without emitting a line — the day
+ * The first confirmed run establishes the starting state without emitting a line — the day
  * opening with the engine off is not an event.
  */
 const buildVoltageEntries = (
-  events: LogbookEvent[],
+  runs: VoltageRun[],
   config: LogbookConfig,
 ): LogbookEntry[] => {
   const entries: LogbookEntry[] = [];
 
-  for (const source of config.voltage.sources) {
+  for (const [sourceIndex, source] of config.voltage.sources.entries()) {
     let currentBandName: string | null = null;
     let currentValue: number | null = null;
-    let pendingBandName: string | null = null;
-    let pendingCount = 0;
-    let pendingFirstEvent: LogbookEvent | null = null;
-    let pendingFirstValue: number | null = null;
 
-    for (const event of events) {
-      const value = event.voltages?.[source.jsonPath];
-      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    const sourceRuns = runs
+      .filter((run) => run.sourceIndex === sourceIndex)
+      .sort((a, b) => a.startTimestamp - b.startTimestamp);
 
-      const band = bandForVoltage(source, value);
-      if (!band) continue;
-
-      if (band.name === currentBandName) {
-        currentValue = value;
-        pendingBandName = null;
-        pendingCount = 0;
-        continue;
-      }
-
-      if (band.name !== pendingBandName) {
-        pendingBandName = band.name;
-        pendingCount = 1;
-        pendingFirstEvent = event;
-        pendingFirstValue = value;
-      } else {
-        pendingCount += 1;
-      }
-
-      if (pendingCount < source.minimumReadings) continue;
-
-      // Report the transition at the reading that first showed it, not at the one that
-      // confirmed it — that is when the engine actually started.
-      const at = pendingFirstEvent ?? event;
-      const newValue = pendingFirstValue ?? value;
+    for (const run of sourceRuns) {
+      if (run.readingCount < source.minimumReadings) continue;
+      if (run.bandName === currentBandName) continue;
 
       if (currentBandName !== null) {
         entries.push({
-          timestamp: at.timestamp,
+          // The run's first reading, not the one that confirmed it — that is when the
+          // engine actually started.
+          timestamp: run.startTimestamp,
           kind: "voltage",
-          title: `${source.label}: ${currentBandName} → ${band.name}`,
+          title: `${source.label}: ${currentBandName} → ${run.bandName}`,
           detail:
             currentValue === null
-              ? `${newValue.toFixed(1)} V`
-              : `${currentValue.toFixed(1)} V → ${newValue.toFixed(1)} V`,
-          latitude: at.latitude,
-          longitude: at.longitude,
+              ? `${run.startValue.toFixed(1)} V`
+              : `${currentValue.toFixed(1)} V → ${run.startValue.toFixed(1)} V`,
         });
       }
 
-      currentBandName = band.name;
-      currentValue = value;
-      pendingBandName = null;
-      pendingCount = 0;
+      currentBandName = run.bandName;
+      currentValue = run.startValue;
     }
   }
 
@@ -278,8 +248,9 @@ export function buildLogbook(args: {
   events: LogbookEvent[];
   timingPoints: LogbookTimingPoint[];
   config: LogbookConfig;
+  voltageRuns: VoltageRun[];
 }): LogbookEntry[] {
-  const { events, timingPoints, config } = args;
+  const { events, timingPoints, config, voltageRuns } = args;
   if (events.length === 0) return [];
 
   const entries: LogbookEntry[] = [];
@@ -394,7 +365,7 @@ export function buildLogbook(args: {
     });
   }
 
-  entries.push(...buildVoltageEntries(events, config));
+  entries.push(...buildVoltageEntries(voltageRuns, config));
 
   entries.push({
     timestamp: lastEvent.timestamp,

@@ -1,4 +1,4 @@
-import { getDb } from "~/routeContext";
+import { getCloudflareContext, getDb } from "~/routeContext";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { type MetaFunction } from "react-router";
@@ -8,7 +8,17 @@ import {
   getTimingPointH3Coverage,
   rebuildTimingPointH3Coverage,
 } from "~/utils/timingPointH3";
+import { invalidateLogbookArchive } from "~/logbook/pdfArchive.server";
 import type { Route } from "./+types/timingPointEditor";
+
+/**
+ * Timing points name the places in every past day's logbook, so changing one makes the
+ * archived PDFs disagree with what the page would now render.
+ */
+const invalidateArchive = (
+  context: Route.ActionArgs["context"],
+  deviceId: number,
+) => invalidateLogbookArchive(getCloudflareContext(context).env, deviceId);
 
 export const meta: MetaFunction = () => {
   return [{ title: "Timing Point Editor" }];
@@ -112,13 +122,21 @@ export async function action({ context, request }: Route.ActionArgs) {
       );
     }
 
+    await invalidateArchive(context, deviceId);
     return { created: newTimingPoint[0].id };
   } else if (request.method === "DELETE") {
     const id = parseInt(formData.get("id") as string);
+    // Read the owner before the row goes, so we know whose archive to drop.
+    const [doomed] = await db
+      .select({ deviceId: Schema.TimingPoints.deviceId })
+      .from(Schema.TimingPoints)
+      .where(eq(Schema.TimingPoints.id, id))
+      .limit(1);
     await db
       .delete(Schema.TimingPointH3Cells)
       .where(eq(Schema.TimingPointH3Cells.timingPointId, id));
     await db.delete(Schema.TimingPoints).where(eq(Schema.TimingPoints.id, id));
+    if (doomed) await invalidateArchive(context, doomed.deviceId);
     return { success: true };
   } else if (request.method === "PUT") {
     const id = parseInt(formData.get("id") as string);
@@ -130,6 +148,7 @@ export async function action({ context, request }: Route.ActionArgs) {
     const [existingTimingPoint] = await db
       .select({
         id: Schema.TimingPoints.id,
+        deviceId: Schema.TimingPoints.deviceId,
         latitude: Schema.TimingPoints.latitude,
         longitude: Schema.TimingPoints.longitude,
       })
@@ -164,6 +183,12 @@ export async function action({ context, request }: Route.ActionArgs) {
       longitude: existingTimingPoint.longitude,
       radius,
     });
+
+    // A point can be reassigned between devices, so both archives are now suspect.
+    await invalidateArchive(context, deviceId);
+    if (existingTimingPoint.deviceId !== deviceId) {
+      await invalidateArchive(context, existingTimingPoint.deviceId);
+    }
 
     return { success: true };
   }

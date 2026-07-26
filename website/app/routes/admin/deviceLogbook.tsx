@@ -1,4 +1,4 @@
-import { getDb } from "~/routeContext";
+import { getCloudflareContext, getDb } from "~/routeContext";
 import {
   Alert,
   Anchor,
@@ -20,6 +20,7 @@ import { Devices } from "~/database/schema/Devices";
 import { Events } from "~/database/schema/Events";
 import { LOGBOOK_CONFIG_EXAMPLE, parseLogbookConfig } from "~/logbook/config";
 import { findNumericJsonPaths } from "~/logbook/detectVoltageFields";
+import { invalidateLogbookArchive } from "~/logbook/pdfArchive.server";
 import type { Route } from "./+types/deviceLogbook";
 
 export const meta: MetaFunction = () => {
@@ -161,6 +162,10 @@ export async function action({ context, params, request }: Route.ActionArgs) {
         recipients.length > 0 ? recipients.join(", ") : null,
     })
     .where(eq(Devices.id, deviceId));
+
+  // Changing the bands or the stop thresholds changes what every past day's log says, so
+  // the PDFs archived against the old config are no longer what the page would render.
+  await invalidateLogbookArchive(getCloudflareContext(context).env, deviceId);
 
   return { error: null, submittedConfig: null, submittedRecipients: null };
 }

@@ -1,4 +1,8 @@
-import { getDb, getPasswordRouteAccess } from "~/routeContext";
+import {
+  getCloudflareContext,
+  getDb,
+  getPasswordRouteAccess,
+} from "~/routeContext";
 import {
   Alert,
   Anchor,
@@ -20,7 +24,7 @@ import {
   IconFileTypePdf,
 } from "@tabler/icons-react";
 import { eq } from "drizzle-orm";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Form,
   Link,
@@ -35,7 +39,10 @@ import {
   loadLogbook,
 } from "~/logbook/loadLogbook.server";
 import { parseLogbookConfig } from "~/logbook/config";
-import { isDayComplete } from "~/logbook/pdfArchive.server";
+import {
+  invalidateLogbookArchive,
+  isDayComplete,
+} from "~/logbook/pdfArchive.server";
 import { formatTime24, formatUtcDay } from "~/utils/dateTime";
 import { rebuildTimingPointH3Coverage } from "~/utils/timingPointH3";
 import type { Route } from "./+types/logbook";
@@ -126,6 +133,10 @@ export async function action({ context, request }: Route.ActionArgs) {
   // than leaving a point that silently never appears on the timings page.
   await rebuildTimingPointH3Coverage(db, timingPoint);
 
+  // Every past day the boat stopped here now reads with the name instead of coordinates,
+  // so the archived PDFs for those days no longer match the page.
+  await invalidateLogbookArchive(getCloudflareContext(context).env, deviceId);
+
   return { error: null };
 }
 
@@ -162,31 +173,44 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
     modal.open();
   };
 
+  /**
+   * `disabled` on a Mantine Button rendered as a link is styling only — it still emits an
+   * href, so a "disabled" button would link to `/{password}/null/logbook`, which the date
+   * parser silently resolves to today. When there is no adjacent day, render a real
+   * disabled button with no link at all.
+   */
+  const dayLink = (
+    date: string | null,
+    emptyLabel: string,
+    sections: { leftSection?: ReactNode; rightSection?: ReactNode },
+  ) =>
+    date ? (
+      <Button
+        component={Link}
+        to={`/${password}/${date}/logbook`}
+        variant="light"
+        size="compact-md"
+        {...sections}
+      >
+        {date}
+      </Button>
+    ) : (
+      <Button variant="light" size="compact-md" disabled {...sections}>
+        {emptyLabel}
+      </Button>
+    );
+
   // Kept adjacent rather than pushed to opposite edges of a fluid container — the pair
   // reads as one control, and the dates label the buttons so nothing has to be inferred
   // from which side an arrow is on.
   const dayNav = (
     <Group gap="xs">
-      <Button
-        component={Link}
-        to={`/${password}/${previousDate}/logbook`}
-        variant="light"
-        size="compact-md"
-        leftSection={<IconChevronLeft size={16} />}
-        disabled={!previousDate}
-      >
-        {previousDate ?? "No earlier data"}
-      </Button>
-      <Button
-        component={Link}
-        to={`/${password}/${nextDate}/logbook`}
-        variant="light"
-        size="compact-md"
-        rightSection={<IconChevronRight size={16} />}
-        disabled={!nextDate}
-      >
-        {nextDate ?? "No later data"}
-      </Button>
+      {dayLink(previousDate, "No earlier data", {
+        leftSection: <IconChevronLeft size={16} />,
+      })}
+      {dayLink(nextDate, "No later data", {
+        rightSection: <IconChevronRight size={16} />,
+      })}
       {canDownloadPdf ? (
         <Button
           component="a"

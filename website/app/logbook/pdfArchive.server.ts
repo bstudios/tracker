@@ -83,3 +83,28 @@ export async function getOrRenderLogbookPdf(
 /** Filename for the download, with anything awkward for a filesystem stripped out. */
 export const logbookPdfFilename = (deviceName: string, dateString: string) =>
   `logbook-${deviceName.replace(/[^\w-]+/g, "-")}-${dateString}.pdf`;
+
+/**
+ * Drop every archived PDF for a device.
+ *
+ * A finished day's *events* never change, but the log built from them does: naming a place
+ * turns coordinates into a name on every past day the boat stopped there, and editing the
+ * voltage bands changes which power lines appear. Both rewrite history, so the whole
+ * device's archive is dropped rather than trying to work out which days were affected.
+ *
+ * Cheap to be wrong about — a missing object is simply re-rendered on next request.
+ */
+export async function invalidateLogbookArchive(env: Env, deviceId: number) {
+  const prefix = `logbook/${deviceId}/`;
+  let cursor: string | undefined;
+
+  do {
+    const listing = await env.LOGBOOK_ARCHIVE.list({ prefix, cursor });
+    if (listing.objects.length > 0) {
+      await env.LOGBOOK_ARCHIVE.delete(
+        listing.objects.map((object) => object.key),
+      );
+    }
+    cursor = listing.truncated ? listing.cursor : undefined;
+  } while (cursor);
+}

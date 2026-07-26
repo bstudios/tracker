@@ -1,5 +1,5 @@
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import * as Schema from "~/database/schema.d";
 import { toMillisTimestamp } from "~/utils/dateTime";
 import {
@@ -8,6 +8,7 @@ import {
   type LogbookEvent,
 } from "./buildLogbook";
 import { parseLogbookConfig, type LogbookConfig } from "./config";
+import { loadVoltageRuns } from "./voltageRuns.server";
 
 /**
  * Loading a device's logbook for one UTC day.
@@ -58,72 +59,60 @@ export async function loadLogbook(
 
   const config = readConfig(device.logbookConfig);
 
-  // Pull out only the configured voltage readings rather than the whole `data` blob: a
-  // busy day is several thousand rows, and the JSON is by far the largest column.
-  const voltageColumns = Object.fromEntries(
-    config.voltage.sources.map((source, index) => [
-      `voltage_${index}`,
-      sql<
-        number | null
-      >`json_extract(${Schema.Events.data}, ${source.jsonPath})`.as(
-        `voltage_${index}`,
-      ),
-    ]),
-  );
-
-  const rows = (await db
-    .select({
-      id: Schema.Events.id,
-      timestamp: Schema.Events.timestamp,
-      latitude: Schema.Events.latitude,
-      longitude: Schema.Events.longitude,
-      ...voltageColumns,
-    })
-    .from(Schema.Events)
-    .where(
-      and(
-        eq(Schema.Events.deviceId, deviceId),
-        eq(Schema.Events.dateString, dateString),
-      ),
-    )
-    .orderBy(asc(Schema.Events.timestamp))) as Array<
-    Record<string, number | null> & {
-      id: number;
-      timestamp: number;
-      latitude: number;
-      longitude: number;
-    }
-  >;
+  // Only the three columns the stationary pass actually needs. The `data` JSON is by far
+  // the widest column and none of it is wanted here — voltage is handled separately, and
+  // entirely in SQL.
+  const [rows, timingPoints, voltageRuns] = await Promise.all([
+    db
+      .select({
+        timestamp: Schema.Events.timestamp,
+        latitude: Schema.Events.latitude,
+        longitude: Schema.Events.longitude,
+      })
+      .from(Schema.Events)
+      .where(
+        and(
+          eq(Schema.Events.deviceId, deviceId),
+          eq(Schema.Events.dateString, dateString),
+        ),
+      )
+      .orderBy(asc(Schema.Events.timestamp)),
+    db
+      .select({
+        id: Schema.TimingPoints.id,
+        name: Schema.TimingPoints.name,
+        latitude: Schema.TimingPoints.latitude,
+        longitude: Schema.TimingPoints.longitude,
+        radius: Schema.TimingPoints.radius,
+      })
+      .from(Schema.TimingPoints)
+      .where(eq(Schema.TimingPoints.deviceId, deviceId)),
+    loadVoltageRuns(db, {
+      deviceId,
+      dateString,
+      sources: config.voltage.sources,
+    }),
+  ]);
 
   const events: LogbookEvent[] = rows.map((row) => ({
-    id: row.id,
     // Some legacy rows were written in seconds or microseconds; normalise before any
     // duration is measured against them.
     timestamp: toMillisTimestamp(row.timestamp),
     latitude: row.latitude,
     longitude: row.longitude,
-    voltages: Object.fromEntries(
-      config.voltage.sources.map((source, index) => [
-        source.jsonPath,
-        row[`voltage_${index}`] ?? null,
-      ]),
-    ),
   }));
-
-  const timingPoints = await db
-    .select({
-      id: Schema.TimingPoints.id,
-      name: Schema.TimingPoints.name,
-      latitude: Schema.TimingPoints.latitude,
-      longitude: Schema.TimingPoints.longitude,
-      radius: Schema.TimingPoints.radius,
-    })
-    .from(Schema.TimingPoints)
-    .where(eq(Schema.TimingPoints.deviceId, deviceId));
 
   return {
     deviceName: device.name,
-    entries: buildLogbook({ events, timingPoints, config }),
+    entries: buildLogbook({
+      events,
+      timingPoints,
+      config,
+      voltageRuns: voltageRuns.map((run) => ({
+        ...run,
+        startTimestamp: toMillisTimestamp(run.startTimestamp),
+      })),
+    }),
     config,
     eventCount: events.length,
   };
@@ -142,36 +131,37 @@ export async function findAdjacentDaysWithData(
 ): Promise<{ previousDate: string | null; nextDate: string | null }> {
   const { deviceId, dateString, allowedDates } = args;
 
-  const [previous] = await db
-    .select({ dateString: Schema.Events.dateString })
-    .from(Schema.Events)
-    .where(
-      and(
-        eq(Schema.Events.deviceId, deviceId),
-        lt(Schema.Events.dateString, dateString),
-      ),
+  // One statement rather than two so this costs a single D1 round trip. Each branch is an
+  // index seek to a single row, not a scan.
+  const rows = await db.all<{ direction: string; date_string: string }>(sql`
+    SELECT 'previous' AS direction, date_string FROM (
+      SELECT ${Schema.Events.dateString} AS date_string
+      FROM ${Schema.Events}
+      WHERE ${Schema.Events.deviceId} = ${deviceId}
+        AND ${Schema.Events.dateString} < ${dateString}
+      ORDER BY ${Schema.Events.dateString} DESC
+      LIMIT 1
     )
-    .orderBy(desc(Schema.Events.dateString))
-    .limit(1);
-
-  const [next] = await db
-    .select({ dateString: Schema.Events.dateString })
-    .from(Schema.Events)
-    .where(
-      and(
-        eq(Schema.Events.deviceId, deviceId),
-        gt(Schema.Events.dateString, dateString),
-      ),
+    UNION ALL
+    SELECT 'next' AS direction, date_string FROM (
+      SELECT ${Schema.Events.dateString} AS date_string
+      FROM ${Schema.Events}
+      WHERE ${Schema.Events.deviceId} = ${deviceId}
+        AND ${Schema.Events.dateString} > ${dateString}
+      ORDER BY ${Schema.Events.dateString} ASC
+      LIMIT 1
     )
-    .orderBy(asc(Schema.Events.dateString))
-    .limit(1);
+  `);
 
   // A date-restricted password must not be able to navigate out of its window.
   const permit = (day: string | undefined) =>
     day && (allowedDates === null || allowedDates.includes(day)) ? day : null;
 
+  const find = (direction: string) =>
+    rows.find((row) => row.direction === direction)?.date_string;
+
   return {
-    previousDate: permit(previous?.dateString),
-    nextDate: permit(next?.dateString),
+    previousDate: permit(find("previous")),
+    nextDate: permit(find("next")),
   };
 }
