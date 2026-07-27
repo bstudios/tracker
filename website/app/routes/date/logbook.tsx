@@ -176,14 +176,15 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
   };
 
   /**
-   * `disabled` on a Mantine Button rendered as a link is styling only — it still emits an
-   * href, so a "disabled" button would link to `/{password}/null/logbook`, which the date
-   * parser silently resolves to today. When there is no adjacent day, render a real
-   * disabled button with no link at all.
+   * Nothing is rendered when there is no adjacent day.
+   *
+   * A *disabled* Mantine Button would not do: `disabled` on one rendered with
+   * `component={Link}` is styling only, so it still emits an href — on the earliest day
+   * that meant a link to `/{password}/null/logbook`, which the date parser silently
+   * resolves to today.
    */
   const dayLink = (
     date: string | null,
-    emptyLabel: string,
     sections: { leftSection?: ReactNode; rightSection?: ReactNode },
   ) =>
     date ? (
@@ -196,21 +197,19 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
       >
         {date}
       </Button>
-    ) : (
-      <Button variant="light" size="compact-md" disabled {...sections}>
-        {emptyLabel}
-      </Button>
-    );
+    ) : null;
 
   // Kept adjacent rather than pushed to opposite edges of a fluid container — the pair
   // reads as one control, and the dates label the buttons so nothing has to be inferred
-  // from which side an arrow is on.
-  const dayNav = (
+  // from which side an arrow is on. The row is dropped entirely when it would be empty,
+  // rather than leaving a gap above and below the table.
+  const hasDayNav = Boolean(previousDate || nextDate || canDownloadPdf);
+  const dayNav = hasDayNav ? (
     <Group gap="xs">
-      {dayLink(previousDate, "No earlier data", {
+      {dayLink(previousDate, {
         leftSection: <IconChevronLeft size={16} />,
       })}
-      {dayLink(nextDate, "No later data", {
+      {dayLink(nextDate, {
         rightSection: <IconChevronRight size={16} />,
       })}
       {canDownloadPdf ? (
@@ -225,7 +224,7 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
         </Button>
       ) : null}
     </Group>
-  );
+  ) : null;
 
   return (
     <Container fluid p="md">
