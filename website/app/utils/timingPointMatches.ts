@@ -94,7 +94,9 @@ export function buildTimingPointMatchCtes(
   const candidateEvents = db.$with("candidate_events").as(
     db
       .select({
-        timing_point_id: selectedTimingPoints.id,
+        timing_point_id: sql<number>`${selectedTimingPoints.id}`.as(
+          "timing_point_id",
+        ),
         name: selectedTimingPoints.name,
         order: selectedTimingPoints.order,
         radius: selectedTimingPoints.radius,
@@ -107,7 +109,7 @@ export function buildTimingPointMatchCtes(
             "timing_point_longitude",
           ),
         date: Schema.Events.dateString,
-        event_id: Schema.Events.id,
+        event_id: sql<number>`${Schema.Events.id}`.as("event_id"),
         timestamp: Schema.Events.timestamp,
         event_latitude: sql<number>`${Schema.Events.latitude}`.as(
           "event_latitude",
