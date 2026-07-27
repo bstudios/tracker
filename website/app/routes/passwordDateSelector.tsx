@@ -1,5 +1,5 @@
 import { getDb } from "~/routeContext";
-import { Accordion, Button, Center, Stack, Title } from "@mantine/core";
+import { Accordion, Button, Container, Stack, Title } from "@mantine/core";
 import { desc, eq } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { redirect, useNavigate, type MetaFunction } from "react-router";
@@ -74,7 +74,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
   const monthGroups = groupDatesByMonth(loaderData.availableDates);
 
   return (
-    <Center>
+    <Container p="md">
       <Stack py="xl" px="xl">
         <Title order={1}>Select a date</Title>
         {loaderData.availableDates.length === 0 ? (
@@ -110,6 +110,6 @@ export default function Page({ loaderData }: Route.ComponentProps) {
           </Accordion>
         )}
       </Stack>
-    </Center>
+    </Container>
   );
 }
