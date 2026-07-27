@@ -1,6 +1,14 @@
-import { Button, Group, MantineProvider, Text, ThemeIcon } from "@mantine/core";
+import {
+  Button,
+  Group,
+  MantineProvider,
+  Text,
+  ThemeIcon,
+  Tooltip,
+} from "@mantine/core";
 import { useViewportSize } from "@mantine/hooks";
 import {
+  IconArrowLeft,
   IconBike,
   IconBeerFilled,
   IconBrandApple,
@@ -12,6 +20,7 @@ import {
   IconCurrentLocation,
   IconGasStationFilled,
   IconHelicopter,
+  IconHistory,
   IconMotorbike,
   IconPlane,
   IconPinned,
@@ -40,7 +49,7 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
-import { Link, useRevalidator } from "react-router";
+import { Link, useNavigate, useRevalidator } from "react-router";
 import { DEFAULT_DEVICE_ICON } from "~/constants/deviceIcons";
 import { theme } from "~/root";
 import {
@@ -106,19 +115,48 @@ const ReCentreButton = (props: {
 }) => {
   const map = useMap();
   return (
-    <Button
-      onClick={() => map.setView(new LatLng(props.lat, props.lon), props.zoom)}
-    >
-      <IconCurrentLocation />
-    </Button>
+    <Tooltip label="Re-centre map">
+      <Button
+        onClick={() =>
+          map.setView(new LatLng(props.lat, props.lon), props.zoom)
+        }
+      >
+        <IconCurrentLocation />
+      </Button>
+    </Tooltip>
   );
 };
 const RefreshButton = () => {
   const revalidator = useRevalidator();
   return (
-    <Button onClick={() => revalidator.revalidate()}>
-      <IconRefresh />
+    <Tooltip label="Refresh data">
+      <Button onClick={() => revalidator.revalidate()}>
+        <IconRefresh />
+      </Button>
+    </Tooltip>
+  );
+};
+const ScrubberToggleButton = (props: {
+  visible: boolean;
+  onClick: () => void;
+}) => (
+  <Tooltip label={props.visible ? "Hide time scrubber" : "Show time scrubber"}>
+    <Button
+      onClick={props.onClick}
+      variant={props.visible ? "filled" : "default"}
+    >
+      <IconHistory />
     </Button>
+  </Tooltip>
+);
+const BackToMenuButton = (props: { password: string; urlDate: string }) => {
+  const navigate = useNavigate();
+  return (
+    <Tooltip label="Back to menu">
+      <Button onClick={() => navigate(`/${props.password}/${props.urlDate}`)}>
+        <IconArrowLeft />
+      </Button>
+    </Tooltip>
   );
 };
 const ThisUserCurrentLocation = (props: { icon: DivIcon }) => {
@@ -194,6 +232,8 @@ export const Map = (props: MapProps) => {
 
   // `null` follows the latest fix; a number is a moment the viewer scrubbed to.
   const [scrubMillis, setScrubMillis] = useState<number | null>(null);
+  // The scrubber bar is hidden until the viewer asks for it, so it doesn't cover the map by default.
+  const [scrubberVisible, setScrubberVisible] = useState(false);
 
   // Ascending and unit-normalised, which the slider needs and `props.pins` is neither:
   // the loader returns newest first, and some legacy rows are stored in seconds.
@@ -304,9 +344,6 @@ export const Map = (props: MapProps) => {
           <AttributionControl
             position="bottomright"
             prefix={`
-              <a href="/${props.password}/${props.urlDate}">
-                Back to menu
-              </a>&nbsp;|&nbsp;
               <a href="https://leafletjs.com" title="A JavaScript library for interactive maps" target="_blank" rel="noopener noreferrer">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8" class="leaflet-attribution-flag"><path fill="#4C7BE1" d="M0 0h12v4H0z"></path><path fill="#FFD500" d="M0 4h12v3H0z"></path><path fill="#E0BC00" d="M0 7h12v1H0z"></path></svg> Leaflet
               </a>`}
@@ -502,12 +539,20 @@ export const Map = (props: MapProps) => {
           <div className="leaflet-top leaflet-right">
             <div className="leaflet-control leaflet-bar">
               <Group>
+                <BackToMenuButton
+                  password={props.password}
+                  urlDate={props.urlDate}
+                />
                 <ReCentreButton
                   lat={highestTimestampPin.latitude}
                   lon={highestTimestampPin.longitude}
                   zoom={props.zoom}
                 />
                 <RefreshButton />
+                <ScrubberToggleButton
+                  visible={scrubberVisible}
+                  onClick={() => setScrubberVisible((visible) => !visible)}
+                />
               </Group>
             </div>
           </div>
@@ -518,21 +563,23 @@ export const Map = (props: MapProps) => {
           rendered inside would pan the map as it was dragged. Sitting above the
           attribution strip rather than flush to the bottom so that stays readable.
         */}
-        <div
-          style={{
-            position: "absolute",
-            left: 8,
-            right: 8,
-            bottom: 24,
-            zIndex: 1000,
-          }}
-        >
-          <TimeScrubber
-            points={scrubberPoints}
-            value={scrubMillis}
-            onChange={setScrubMillis}
-          />
-        </div>
+        {scrubberVisible ? (
+          <div
+            style={{
+              position: "absolute",
+              left: 8,
+              right: 8,
+              bottom: 24,
+              zIndex: 1000,
+            }}
+          >
+            <TimeScrubber
+              points={scrubberPoints}
+              value={scrubMillis}
+              onChange={setScrubMillis}
+            />
+          </div>
+        ) : null}
       </div>
     );
 };

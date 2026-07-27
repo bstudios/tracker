@@ -8,7 +8,7 @@
       "database_id": "3dfa76f7-8cc4-435e-8975-dc8b112f1b8f",
       "migrations_table": "migrations",
       "migrations_dir": "database/migrations",
-      "remote": false,
+      "remote": true,
     },
   ],
   "routes": [

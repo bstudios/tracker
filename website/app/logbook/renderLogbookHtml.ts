@@ -78,7 +78,7 @@ export const renderLogbookDocument = ({
 <meta charset="utf-8">
 <title>Logbook — ${escapeHtml(deviceName)} — ${escapeHtml(dateString)}</title>
 <style>
-  @page { size: A4; margin: 18mm 14mm; }
+  @page { size: A4; margin: 22mm 14mm 18mm; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     color: #111; margin: 0; font-size: 11pt; line-height: 1.45;

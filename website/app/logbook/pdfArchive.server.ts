@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { createLogbookPrintToken } from "./printToken.server";
+import { formatDateTimeMed } from "~/utils/dateTime";
 
 /**
  * Rendering a logbook PDF at most once.
@@ -32,8 +33,10 @@ export type LogbookPdf = {
 /**
  * Fetch the day's PDF from R2, rendering and storing it if it is not there yet.
  *
- * Returns `null` when Browser Rendering is unavailable — it has no local simulator, so
- * this is the normal case under `npm run dev` and callers should say so rather than fail.
+ * Returns `null` when Browser Rendering is unavailable — the binding is configured
+ * `remote: true` in wrangler.jsonc, so `npm run dev` proxies to the real service rather
+ * than simulating it, but it can still fail to reach it (offline, no Cloudflare auth).
+ * Callers should say so rather than fail.
  *
  * Pass `force: true` to skip the cache read and re-render even though a copy already
  * exists — for a viewer who renamed a timing point and wants this one day's PDF caught up
@@ -60,9 +63,32 @@ export async function getOrRenderLogbookPdf(
   });
   const printUrl = `${env.PUBLIC_BASE_URL}/print/logbook/${deviceId}/${dateString}?token=${token}`;
 
+  const generatedAt = formatDateTimeMed(Date.now());
+
   let response: Response;
   try {
-    response = await env.BROWSER.quickAction("pdf", { url: printUrl });
+    response = await env.BROWSER.quickAction("pdf", {
+      url: printUrl,
+      pdfOptions: {
+        printBackground: true,
+        margin: { top: "22mm", bottom: "18mm", left: "14mm", right: "14mm" },
+        displayHeaderFooter: true,
+        // Puppeteer templates: rendered in their own tiny frame, so every style must be
+        // inline — the document's own <style> doesn't reach them. `.title` is filled in by
+        // Chrome from document.title; `.pageNumber`/`.totalPages` from the render itself.
+        // Chrome's built-in classes carry their own default sizing, so every element gets
+        // an explicit font-size rather than relying on inheritance from the wrapper.
+        headerTemplate: `
+          <div style="width:100%; margin:0 14mm; font-family:-apple-system,Helvetica,Arial,sans-serif; border-bottom:1px solid #ccc; padding-bottom:5px;">
+            <span class="title" style="font-size:15px; color:#333;"></span>
+          </div>`,
+        footerTemplate: `
+          <div style="width:100%; margin:0 14mm; font-family:-apple-system,Helvetica,Arial,sans-serif; display:flex; justify-content:space-between; border-top:1px solid #ccc; padding-top:5px;">
+            <span style="font-size:13px; color:#777;">Generated ${generatedAt}</span>
+            <span style="font-size:13px; color:#777;">Page <span class="pageNumber" style="font-size:13px;"></span> of <span class="totalPages" style="font-size:13px;"></span></span>
+          </div>`,
+      },
+    });
   } catch {
     return null;
   }

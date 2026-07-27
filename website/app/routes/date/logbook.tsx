@@ -115,6 +115,11 @@ export async function action({ context, request }: Route.ActionArgs) {
       createdAt: Date.now(),
     });
 
+    // A finished day's PDF is rendered once and cached in R2 (see pdfArchive.server.ts) —
+    // a remark added afterwards would otherwise never appear in a downloaded copy until
+    // someone happens to hit "Regenerate PDF".
+    await invalidateLogbookArchive(getCloudflareContext(context).env, deviceId);
+
     return { error: null };
   }
 

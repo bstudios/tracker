@@ -60,9 +60,10 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${logbookPdfFilename(device.name, urlDate)}"`,
-      // The day is finished, so the bytes will not change. Private because the URL is
-      // behind a viewing password and should not be held by a shared cache.
-      "Cache-Control": "private, max-age=86400",
+      // R2 is already the cache for a finished day (see pdfArchive.server.ts) and
+      // `?regenerate` needs to bypass anything sitting in front of it — a browser holding
+      // this exact URL for a day would otherwise serve a stale PDF straight from disk.
+      "Cache-Control": "no-store",
     },
   });
 }

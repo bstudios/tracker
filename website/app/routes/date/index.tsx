@@ -7,13 +7,28 @@ import {
   Stack,
   Text,
   Title,
+  UnstyledButton,
+  useMantineTheme,
+  Anchor,
+  Group,
 } from "@mantine/core";
 import { Link, type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { formatUtcDay } from "~/utils/dateTime";
 import type { Route } from "./+types/index";
+import {
+  IconDeviceAnalytics,
+  IconDownload,
+  IconGitCompare,
+  IconMap,
+  IconNotebook,
+  IconStopwatch,
+} from "@tabler/icons-react";
+import classes from "~/components/DateIndexTable.module.css";
+import { DateTime } from "luxon";
 
+export function ActionsGrid() {}
 export const meta: MetaFunction = () => {
   return [{ title: "Tracking Menu" }];
 };
@@ -39,6 +54,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 export default function Page({ loaderData }: Route.ComponentProps) {
+  const theme = useMantineTheme();
   if (!loaderData.hasData) {
     return (
       <Container fluid p="md">
@@ -52,86 +68,113 @@ export default function Page({ loaderData }: Route.ComponentProps) {
   }
 
   return (
-    <Container fluid p="md">
+    <Container p="md">
       <Stack gap="md">
-        <Title order={2}>
-          Tracking menu for {formatUtcDay(loaderData.urlDate)}
-        </Title>
-
-        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-          <Card withBorder>
-            <Stack gap="xs">
-              <Title order={3}>Main pages</Title>
-              <Text c="dimmed" size="sm">
-                Start with the live map, then explore timing points and
-                analysis.
-              </Text>
-              <Button
-                component={Link}
-                to={`/${loaderData.password}/${loaderData.urlDate}/live`}
-                variant="light"
-                justify="flex-start"
-                fullWidth
-              >
+        <Card withBorder radius="md" className={classes.card}>
+          <Group justify="space-between">
+            <Text className={classes.title}>
+              Tracking menu for{" "}
+              {DateTime.fromFormat(loaderData.urlDate, "yyyy-MM-dd", {
+                zone: "utc",
+              }).toFormat("cccc d LLL")}
+            </Text>
+            <Anchor
+              c="inherit"
+              size="xs"
+              to={`/${loaderData.password}`}
+              component={Link}
+            >
+              Change date
+            </Anchor>
+          </Group>
+          <SimpleGrid cols={3} mt="md">
+            <UnstyledButton
+              className={classes.item}
+              component={Link}
+              to={`/${loaderData.password}/${loaderData.urlDate}/live`}
+              prefetch="render"
+            >
+              <IconMap color={theme.colors.pink[6]} size={32} stroke={1.5} />
+              <Text size="xs" mt={7}>
                 Live tracking map
-              </Button>
-              <Button
-                component={Link}
-                to={`/${loaderData.password}/${loaderData.urlDate}/logbook`}
-                variant="light"
-                justify="flex-start"
-                fullWidth
-              >
-                Logbook
-              </Button>
-              <Button
-                component={Link}
-                to={`/${loaderData.password}/${loaderData.urlDate}/timings`}
-                variant="light"
-                justify="flex-start"
-                fullWidth
-              >
-                Timing points
-              </Button>
-              <Button
-                component={Link}
-                to={`/${loaderData.password}/${loaderData.urlDate}/analysis`}
-                variant="light"
-                justify="flex-start"
-                fullWidth
-              >
-                Analysis
-              </Button>
-            </Stack>
-          </Card>
-
-          <Card withBorder>
-            <Stack gap="xs">
-              <Title order={3}>Advanced</Title>
-              <Text c="dimmed" size="sm">
-                Deeper comparison and export options.
               </Text>
-              <Button
-                component={Link}
-                to={`/${loaderData.password}/${loaderData.urlDate}/timingsHistoric`}
-                variant="subtle"
-                justify="flex-start"
-                fullWidth
-              >
+            </UnstyledButton>
+            <UnstyledButton
+              className={classes.item}
+              component={Link}
+              to={`/${loaderData.password}/${loaderData.urlDate}/logbook`}
+              prefetch="intent"
+            >
+              <IconNotebook
+                color={theme.colors.pink[6]}
+                size={32}
+                stroke={1.5}
+              />
+              <Text size="xs" mt={7}>
+                Logbook
+              </Text>
+            </UnstyledButton>
+            <UnstyledButton
+              className={classes.item}
+              component={Link}
+              to={`/${loaderData.password}/${loaderData.urlDate}/timings`}
+              prefetch="intent"
+            >
+              <IconStopwatch
+                color={theme.colors.pink[6]}
+                size={32}
+                stroke={1.5}
+              />
+              <Text size="xs" mt={7}>
+                Timing Points
+              </Text>
+            </UnstyledButton>
+            <UnstyledButton
+              className={classes.item}
+              component={Link}
+              to={`/${loaderData.password}/${loaderData.urlDate}/analysis`}
+              prefetch="intent"
+            >
+              <IconDeviceAnalytics
+                color={theme.colors.pink[6]}
+                size={32}
+                stroke={1.5}
+              />
+              <Text size="xs" mt={7}>
+                Analysis
+              </Text>
+            </UnstyledButton>
+            <UnstyledButton
+              className={classes.item}
+              component={Link}
+              to={`/${loaderData.password}/${loaderData.urlDate}/timingsHistoric`}
+              prefetch="intent"
+            >
+              <IconGitCompare
+                color={theme.colors.pink[6]}
+                size={32}
+                stroke={1.5}
+              />
+              <Text size="xs" mt={7}>
                 Historic comparison
-              </Button>
-              <Button
-                component="a"
-                href={`/${loaderData.password}/${loaderData.urlDate}/export.gpx`}
-                variant="subtle"
-                justify="flex-start"
-                fullWidth
-              >
+              </Text>
+            </UnstyledButton>
+            <UnstyledButton
+              className={classes.item}
+              component={"a"}
+              href={`/${loaderData.password}/${loaderData.urlDate}/export.gpx`}
+            >
+              <IconDownload
+                color={theme.colors.pink[6]}
+                size={32}
+                stroke={1.5}
+              />
+              <Text size="xs" mt={7}>
                 GPX download
-              </Button>
-            </Stack>
-          </Card>
-        </SimpleGrid>
+              </Text>
+            </UnstyledButton>
+          </SimpleGrid>
+        </Card>
       </Stack>
     </Container>
   );
