@@ -38,6 +38,7 @@
   // Renders the signed /print/logbook page to a PDF.
   "browser": {
     "binding": "BROWSER",
+    "remote": true,
   },
   // Cloudflare Email Service, used to send that PDF as an attachment.
   "send_email": [
