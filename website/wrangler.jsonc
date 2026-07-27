@@ -22,7 +22,8 @@
     "CLOUDFLARE_ACCESS_TEAM_DOMAIN": "bstudios.cloudflareaccess.com",
     // Absolute origin the logbook workflow points Browser Rendering at.
     "PUBLIC_BASE_URL": "https://tracker.bithell.studio",
-    "LOGBOOK_EMAIL_FROM": "logbook@bithell.studio",
+    "EMAIL_FROM": "logbook@bithell.studio",
+    "PDF_SIGNING_SECRET": "SET-IN-ENVIRONMENT",
   },
   "workflows": [
     {
@@ -47,8 +48,8 @@
   // Rendered logbook PDFs for finished days, so a day is only ever rendered once.
   "r2_buckets": [
     {
-      "binding": "LOGBOOK_ARCHIVE",
-      "bucket_name": "tracker-logbook-archive",
+      "binding": "R2_BUCKET",
+      "bucket_name": "tracker",
     },
   ],
   // Neither of the two bindings above is marked `"remote": true`, even though both need the

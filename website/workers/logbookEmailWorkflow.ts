@@ -130,7 +130,7 @@ export class DailyLogbookEmailWorkflow extends WorkflowEntrypoint<
           try {
             await this.env.EMAIL.send({
               to: recipient,
-              from: this.env.LOGBOOK_EMAIL_FROM,
+              from: this.env.EMAIL_FROM,
               subject: `Logbook — ${logbook.deviceName} — ${dateString}`,
               html: renderLogbookEmailHtml(documentArgs),
               text: renderLogbookText(documentArgs),

@@ -31,19 +31,17 @@ If a device has email recipients set on that same admin page, the `daily-logbook
 
 The schedule lives on the Workflow binding in `wrangler.jsonc` (`schedules`), not as a worker cron trigger.
 
-Rendered PDFs for finished days are kept in the `LOGBOOK_ARCHIVE` R2 bucket, so a day is only ever rendered once — whichever of the nightly email or the page's **Download PDF** link comes first warms the cache for the other. Today's log is never cached, because it is still growing; the download link only appears once the UTC day has ended. Deleting an object from the bucket simply causes it to be re-rendered on next request, so the bucket is safe to prune.
+Rendered PDFs for finished days are kept in the `R2_BUCKET` R2 bucket, so a day is only ever rendered once — whichever of the nightly email or the page's **Download PDF** link comes first warms the cache for the other. Today's log is never cached, because it is still growing; the download link only appears once the UTC day has ended. Deleting an object from the bucket simply causes it to be re-rendered on next request, so the bucket is safe to prune.
 
 Setup that cannot be done from the repository:
 
-- `cd website && npx wrangler secret put LOGBOOK_PDF_SIGNING_SECRET` — signs the `/print/logbook/:deviceId/:date` URLs the PDF is rendered from. Without it that route returns 500.
-- `cd website && npx wrangler r2 bucket create tracker-logbook-archive` — holds the rendered PDFs.
-- Onboard the sender domain (`LOGBOOK_EMAIL_FROM` in `wrangler.jsonc`) in Cloudflare Email Sending. The zone must use Cloudflare DNS.
+- Onboard the sender domain (`EMAIL_FROM` in `wrangler.jsonc`) in Cloudflare Email Sending. The zone must use Cloudflare DNS.
 - Make sure the Cloudflare Access policy is scoped to `/admin` and not the whole zone, or Browser Rendering cannot fetch `/print/logbook/...`.
 
 For local development, put the secret in `website/.dev.vars` (gitignored):
 
 ```
-LOGBOOK_PDF_SIGNING_SECRET=local-development-secret
+PDF_SIGNING_SECRET=local-development-secret
 ```
 
 The `BROWSER` and `EMAIL` bindings are deliberately **not** marked `"remote": true`, because that would make every `npm run dev` require Cloudflare credentials. Neither has a working local simulator, so to exercise the workflow end to end run `npx wrangler dev --remote`.

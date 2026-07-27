@@ -44,12 +44,12 @@ export async function getOrRenderLogbookPdf(
   const complete = isDayComplete(dateString);
 
   if (complete) {
-    const cached = await env.LOGBOOK_ARCHIVE.get(key);
+    const cached = await env.R2_BUCKET.get(key);
     if (cached) return { body: await cached.arrayBuffer(), cached: true };
   }
 
   const token = await createLogbookPrintToken({
-    secret: env.LOGBOOK_PDF_SIGNING_SECRET,
+    secret: env.PDF_SIGNING_SECRET,
     deviceId,
     dateString,
   });
@@ -72,7 +72,7 @@ export async function getOrRenderLogbookPdf(
 
   // Only worth keeping once the day can no longer change.
   if (complete) {
-    await env.LOGBOOK_ARCHIVE.put(key, body, {
+    await env.R2_BUCKET.put(key, body, {
       httpMetadata: { contentType: "application/pdf" },
     });
   }
@@ -99,11 +99,9 @@ export async function invalidateLogbookArchive(env: Env, deviceId: number) {
   let cursor: string | undefined;
 
   do {
-    const listing = await env.LOGBOOK_ARCHIVE.list({ prefix, cursor });
+    const listing = await env.R2_BUCKET.list({ prefix, cursor });
     if (listing.objects.length > 0) {
-      await env.LOGBOOK_ARCHIVE.delete(
-        listing.objects.map((object) => object.key),
-      );
+      await env.R2_BUCKET.delete(listing.objects.map((object) => object.key));
     }
     cursor = listing.truncated ? listing.cursor : undefined;
   } while (cursor);

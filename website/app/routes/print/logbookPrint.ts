@@ -13,7 +13,7 @@ import type { Route } from "./+types/logbookPrint";
  */
 export async function loader({ context, params, request }: Route.LoaderArgs) {
   const { env } = getCloudflareContext(context);
-  const secret = env.LOGBOOK_PDF_SIGNING_SECRET;
+  const secret = env.PDF_SIGNING_SECRET;
 
   if (!secret) {
     throw new Response("Logbook PDF signing is not configured", {
