@@ -1,6 +1,6 @@
 import { formatTime24, formatUtcDay } from "~/utils/dateTime";
 import type { LogbookEntry, LogbookEntryKind } from "./buildLogbook";
-
+import { DISPLAY_TIME_ZONE } from "~/utils/dateTime";
 /**
  * Rendering a logbook as standalone HTML.
  *
@@ -105,7 +105,7 @@ export const renderLogbookDocument = ({
   <p class="subtitle">
     ${escapeHtml(formatUtcDay(dateString))} ·
     ${eventCount} position report${eventCount === 1 ? "" : "s"} condensed to
-    ${entries.length} entr${entries.length === 1 ? "y" : "ies"} · times shown local
+    ${entries.length} entr${entries.length === 1 ? "y" : "ies"} · times shown are ${DISPLAY_TIME_ZONE} time.
   </p>
   ${
     truncated
@@ -135,7 +135,7 @@ export const renderLogbookEmailHtml = ({
   <p style="margin:0 0 16px;color:#555;font-size:13px">
     ${escapeHtml(formatUtcDay(dateString))} · ${eventCount} position report${
       eventCount === 1 ? "" : "s"
-    } · times shown local
+    } · times shown are ${DISPLAY_TIME_ZONE} time.
   </p>
   ${
     entries.length === 0
