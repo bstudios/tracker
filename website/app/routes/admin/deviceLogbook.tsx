@@ -211,7 +211,7 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
 
             <Textarea
               label="Logbook configuration (JSON)"
-              description="Leave blank to use the defaults: stop after 15 minutes within 100 m, and no voltage lines."
+              description="Leave blank to use the defaults: stop after 15 minutes within 100 m, signal lost after 20 minutes without a report, and no voltage lines."
               name="logbookConfig"
               placeholder={LOGBOOK_CONFIG_EXAMPLE}
               autosize

@@ -23,10 +23,13 @@ const KIND_LABELS: Record<LogbookEntryKind, string> = {
   last: "End",
   arrived: "Arrived",
   departed: "Departed",
+  "signal-lost": "Signal lost",
+  "signal-restored": "Signal restored",
   "timing-point-arrived": "Arrived",
   "timing-point-departed": "Departed",
   "timing-point-passed": "Passed",
   voltage: "Power",
+  remark: "Remark",
 };
 
 const renderRows = (entries: LogbookEntry[]) =>

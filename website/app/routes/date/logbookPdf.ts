@@ -18,7 +18,7 @@ import type { Route } from "./+types/logbookPdf";
  * Offered for finished days only. Today's log is still growing, so a downloaded copy would
  * be out of date before it finished saving — and it is the one day that cannot be cached.
  */
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context, request }: Route.LoaderArgs) {
   const { env } = getCloudflareContext(context);
   const { urlDate, deviceId } = getPasswordRouteAccess(context);
 
@@ -36,9 +36,17 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   if (!device) throw new Response("Not found", { status: 404 });
 
+  // A viewer who just renamed a timing point can ask for this one day to be rebuilt
+  // straight away, instead of waiting for it to be requested again after the archive was
+  // invalidated (or as a fallback if it wasn't, e.g. a stale copy from before that logic
+  // existed).
+  const regenerate =
+    new URL(request.url).searchParams.get("regenerate") !== null;
+
   const pdf = await getOrRenderLogbookPdf(env, {
     deviceId,
     dateString: urlDate,
+    force: regenerate,
   });
 
   if (!pdf) {

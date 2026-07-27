@@ -14,6 +14,7 @@ import {
   Stack,
   Table,
   Text,
+  Textarea,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -22,8 +23,11 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconFileTypePdf,
+  IconMessagePlus,
+  IconRefresh,
 } from "@tabler/icons-react";
 import { eq } from "drizzle-orm";
+import { DateTime } from "luxon";
 import { useState, type ReactNode } from "react";
 import {
   Form,
@@ -43,7 +47,7 @@ import {
   invalidateLogbookArchive,
   isDayComplete,
 } from "~/logbook/pdfArchive.server";
-import { formatTime24, formatUtcDay } from "~/utils/dateTime";
+import { DISPLAY_TIME_ZONE, formatTime24, formatUtcDay } from "~/utils/dateTime";
 import { rebuildTimingPointH3Coverage } from "~/utils/timingPointH3";
 import type { Route } from "./+types/logbook";
 
@@ -81,11 +85,40 @@ export async function loader({ context }: Route.LoaderArgs) {
 export async function action({ context, request }: Route.ActionArgs) {
   const db = getDb(context);
   // The device comes from the password, never from the submitted form, so a password
-  // cannot be used to add a timing point to somebody else's device.
-  const { deviceId } = getPasswordRouteAccess(context);
+  // cannot be used to add a timing point — or a remark — to somebody else's device.
+  const { deviceId, urlDate } = getPasswordRouteAccess(context);
   const formData = await request.formData();
+  const intent = formData.get("intent");
 
-  if (formData.get("intent") !== "create-timing-point") {
+  if (intent === "add-remark") {
+    const text = ((formData.get("text") as string | null) ?? "").trim();
+    const time = ((formData.get("time") as string | null) ?? "").trim();
+
+    if (text.length === 0) {
+      return data({ error: "Write something to remark on" }, { status: 400 });
+    }
+
+    const parsedTime = DateTime.fromFormat(
+      `${urlDate} ${time}`,
+      "yyyy-MM-dd HH:mm",
+      { zone: DISPLAY_TIME_ZONE },
+    );
+    if (!parsedTime.isValid) {
+      return data({ error: "That time is not valid" }, { status: 400 });
+    }
+
+    await db.insert(Schema.LogbookRemarks).values({
+      deviceId,
+      dateString: urlDate,
+      timestamp: parsedTime.toMillis(),
+      text,
+      createdAt: Date.now(),
+    });
+
+    return { error: null };
+  }
+
+  if (intent !== "create-timing-point") {
     throw new Error("Unsupported logbook action");
   }
 
@@ -147,10 +180,13 @@ const KIND_STYLES: Record<LogbookEntryKind, { label: string; color: string }> =
     last: { label: "End", color: "gray" },
     arrived: { label: "Arrived", color: "teal" },
     departed: { label: "Departed", color: "blue" },
+    "signal-lost": { label: "Signal lost", color: "red" },
+    "signal-restored": { label: "Signal restored", color: "green" },
     "timing-point-arrived": { label: "Arrived", color: "teal" },
     "timing-point-departed": { label: "Departed", color: "blue" },
     "timing-point-passed": { label: "Passed", color: "grape" },
     voltage: { label: "Power", color: "orange" },
+    remark: { label: "Remark", color: "yellow" },
   };
 
 export default function Page({ loaderData, actionData }: Route.ComponentProps) {
@@ -168,6 +204,7 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
 
   const [namingEntry, setNamingEntry] = useState<LogbookEntry | null>(null);
   const [modalOpened, modal] = useDisclosure(false);
+  const [remarkModalOpened, remarkModal] = useDisclosure(false);
   const navigation = useNavigation();
 
   const openNamingModal = (entry: LogbookEntry) => {
@@ -223,21 +260,44 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
           Download PDF
         </Button>
       ) : null}
+      {canDownloadPdf ? (
+        <Button
+          component="a"
+          href={`/${password}/${urlDate}/logbook.pdf?regenerate`}
+          variant="subtle"
+          size="compact-md"
+          color="gray"
+          leftSection={<IconRefresh size={16} />}
+          title="Rebuild the PDF, e.g. after renaming a timing point"
+        >
+          Regenerate PDF
+        </Button>
+      ) : null}
     </Group>
   ) : null;
 
   return (
     <Container fluid p="md">
       <Stack gap="md">
-        <div>
-          <Title order={1}>Logbook — {formatUtcDay(urlDate)}</Title>
-          <Text c="dimmed">
-            {deviceName ? `${deviceName} · ` : ""}
-            {eventCount} position report{eventCount === 1 ? "" : "s"}, condensed
-            to {entries.length} entr{entries.length === 1 ? "y" : "ies"}. Times
-            are local.
-          </Text>
-        </div>
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <div>
+            <Title order={1}>Logbook — {formatUtcDay(urlDate)}</Title>
+            <Text c="dimmed">
+              {deviceName ? `${deviceName} · ` : ""}
+              {eventCount} position report{eventCount === 1 ? "" : "s"},
+              condensed to {entries.length} entr
+              {entries.length === 1 ? "y" : "ies"}. Times are local.
+            </Text>
+          </div>
+          <Button
+            variant="light"
+            size="compact-md"
+            leftSection={<IconMessagePlus size={16} />}
+            onClick={remarkModal.open}
+          >
+            Add remark
+          </Button>
+        </Group>
 
         {dayNav}
 
@@ -352,6 +412,54 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
               </Button>
               <Button type="submit" loading={navigation.state === "submitting"}>
                 Create
+              </Button>
+            </Group>
+          </Stack>
+        </Form>
+      </Modal>
+
+      <Modal
+        opened={remarkModalOpened}
+        onClose={remarkModal.close}
+        title="Add a remark"
+        centered
+      >
+        <Form method="post" onSubmit={remarkModal.close}>
+          <input type="hidden" name="intent" value="add-remark" />
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">
+              Adds a note to this day&apos;s logbook at the time given, e.g. a
+              sail change or something worth remembering that the tracker
+              wouldn&apos;t otherwise show.
+            </Text>
+            <TextInput
+              type="time"
+              label="Time"
+              name="time"
+              defaultValue={DateTime.now()
+                .setZone(DISPLAY_TIME_ZONE)
+                .toFormat("HH:mm")}
+              data-autofocus
+              required
+            />
+            <Textarea
+              label="Remark"
+              name="text"
+              placeholder="Reefed the main, wind picking up"
+              autosize
+              minRows={2}
+              required
+            />
+            <Group justify="flex-end">
+              <Button
+                variant="default"
+                onClick={remarkModal.close}
+                type="button"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={navigation.state === "submitting"}>
+                Add
               </Button>
             </Group>
           </Stack>

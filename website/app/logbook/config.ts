@@ -12,6 +12,7 @@ export const LOGBOOK_DEFAULT_STATIONARY_RADIUS_METERS = 100;
 export const LOGBOOK_DEFAULT_STATIONARY_MINUTES = 15;
 export const LOGBOOK_DEFAULT_TIMING_POINT_DWELL_SECONDS = 60;
 export const LOGBOOK_DEFAULT_MINIMUM_READINGS = 2;
+export const LOGBOOK_DEFAULT_SIGNAL_LOST_MINUTES = 20;
 
 const voltageBandSchema = z
   .object({
@@ -81,6 +82,22 @@ export const logbookConfigSchema = z.object({
       radiusMeters: LOGBOOK_DEFAULT_STATIONARY_RADIUS_METERS,
       minimumDurationMinutes: LOGBOOK_DEFAULT_STATIONARY_MINUTES,
     }),
+  signalLost: z
+    .object({
+      /**
+       * A gap this long between two consecutive reports is not evidence the boat stayed
+       * put — the tracker went quiet. Logged as "signal lost" / "signal restored" instead
+       * of being silently folded into a stationary run.
+       */
+      afterMinutes: z
+        .number()
+        .min(1)
+        .max(1440)
+        .default(LOGBOOK_DEFAULT_SIGNAL_LOST_MINUTES),
+    })
+    .default({
+      afterMinutes: LOGBOOK_DEFAULT_SIGNAL_LOST_MINUTES,
+    }),
   timingPointVisit: z
     .object({
       /**
@@ -120,6 +137,9 @@ export const LOGBOOK_CONFIG_EXAMPLE = JSON.stringify(
     stationary: {
       radiusMeters: LOGBOOK_DEFAULT_STATIONARY_RADIUS_METERS,
       minimumDurationMinutes: LOGBOOK_DEFAULT_STATIONARY_MINUTES,
+    },
+    signalLost: {
+      afterMinutes: LOGBOOK_DEFAULT_SIGNAL_LOST_MINUTES,
     },
     timingPointVisit: {
       minimumDwellSeconds: LOGBOOK_DEFAULT_TIMING_POINT_DWELL_SECONDS,

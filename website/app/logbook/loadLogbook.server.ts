@@ -4,6 +4,7 @@ import * as Schema from "~/database/schema.d";
 import { toMillisTimestamp } from "~/utils/dateTime";
 import {
   buildLogbook,
+  sortLogbookEntries,
   type LogbookEntry,
   type LogbookEvent,
 } from "./buildLogbook";
@@ -75,7 +76,7 @@ export async function loadLogbook(
   // Only the three columns the stationary pass actually needs. The `data` JSON is by far
   // the widest column and none of it is wanted here — voltage is handled separately, and
   // entirely in SQL.
-  const [rows, timingPoints, voltageRuns] = await Promise.all([
+  const [rows, timingPoints, voltageRuns, remarks] = await Promise.all([
     db
       .select({
         timestamp: Schema.Events.timestamp,
@@ -107,6 +108,19 @@ export async function loadLogbook(
       dateString,
       sources: config.voltage.sources,
     }),
+    db
+      .select({
+        timestamp: Schema.LogbookRemarks.timestamp,
+        text: Schema.LogbookRemarks.text,
+      })
+      .from(Schema.LogbookRemarks)
+      .where(
+        and(
+          eq(Schema.LogbookRemarks.deviceId, deviceId),
+          eq(Schema.LogbookRemarks.dateString, dateString),
+        ),
+      )
+      .orderBy(asc(Schema.LogbookRemarks.timestamp)),
   ]);
 
   const truncated = rows.length > MAX_EVENTS_PER_DAY;
@@ -121,17 +135,32 @@ export async function loadLogbook(
       longitude: row.longitude,
     }));
 
+  const builtEntries = buildLogbook({
+    events,
+    timingPoints,
+    config,
+    voltageRuns: voltageRuns.map((run) => ({
+      ...run,
+      startTimestamp: toMillisTimestamp(run.startTimestamp),
+    })),
+  });
+
+  // Remarks are free text against a timestamp, not derived from fixes, so they are merged
+  // in here rather than inside `buildLogbook` — which stays pure and DB-free — and
+  // re-sorted the same way it sorts its own entries.
+  const remarkEntries: LogbookEntry[] = remarks.map((remark) => ({
+    timestamp: toMillisTimestamp(remark.timestamp),
+    kind: "remark",
+    title: "Remark",
+    detail: remark.text,
+  }));
+
   return {
     deviceName: device.name,
-    entries: buildLogbook({
-      events,
-      timingPoints,
-      config,
-      voltageRuns: voltageRuns.map((run) => ({
-        ...run,
-        startTimestamp: toMillisTimestamp(run.startTimestamp),
-      })),
-    }),
+    entries:
+      remarkEntries.length > 0
+        ? sortLogbookEntries([...builtEntries, ...remarkEntries])
+        : builtEntries,
     config,
     eventCount: events.length,
     truncated,

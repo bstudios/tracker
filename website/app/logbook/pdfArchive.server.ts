@@ -34,16 +34,21 @@ export type LogbookPdf = {
  *
  * Returns `null` when Browser Rendering is unavailable — it has no local simulator, so
  * this is the normal case under `npm run dev` and callers should say so rather than fail.
+ *
+ * Pass `force: true` to skip the cache read and re-render even though a copy already
+ * exists — for a viewer who renamed a timing point and wants this one day's PDF caught up
+ * without waiting on `invalidateLogbookArchive` to have been called for it, or as a manual
+ * fallback if it wasn't.
  */
 export async function getOrRenderLogbookPdf(
   env: Env,
-  args: { deviceId: number; dateString: string },
+  args: { deviceId: number; dateString: string; force?: boolean },
 ): Promise<LogbookPdf | null> {
-  const { deviceId, dateString } = args;
+  const { deviceId, dateString, force = false } = args;
   const key = logbookPdfKey(deviceId, dateString);
   const complete = isDayComplete(dateString);
 
-  if (complete) {
+  if (complete && !force) {
     const cached = await env.R2_BUCKET.get(key);
     if (cached) return { body: await cached.arrayBuffer(), cached: true };
   }

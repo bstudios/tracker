@@ -1,4 +1,4 @@
-import { formatDurationBetween } from "~/utils/dateTime";
+import { formatDurationBetween, formatTime24 } from "~/utils/dateTime";
 import { haversineMeters } from "~/utils/geo";
 import type { LogbookConfig } from "./config";
 import type { VoltageRun } from "./voltageRuns.server";
@@ -36,10 +36,13 @@ export type LogbookEntryKind =
   | "last"
   | "arrived"
   | "departed"
+  | "signal-lost"
+  | "signal-restored"
   | "timing-point-passed"
   | "timing-point-arrived"
   | "timing-point-departed"
-  | "voltage";
+  | "voltage"
+  | "remark";
 
 export type LogbookEntry = {
   /** Unix milliseconds. */
@@ -63,36 +66,59 @@ type StationarySegment = {
   endTimestamp: number;
   latitude: number;
   longitude: number;
+  /**
+   * Why the run stopped extending: the boat actually moved away (`moved`), the tracker
+   * went quiet for longer than the signal-lost threshold (`signal-lost`), or the day's
+   * data simply ran out while it was still there (`day-end`).
+   */
+  endedBy: "moved" | "signal-lost" | "day-end";
+};
+
+/** A gap between two consecutive reports longer than the signal-lost threshold. */
+type SignalGap = {
+  lastContactTimestamp: number;
+  lastLatitude: number;
+  lastLongitude: number;
+  resumedTimestamp: number;
+  resumedLatitude: number;
+  resumedLongitude: number;
 };
 
 const formatPosition = (latitude: number, longitude: number) =>
   `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 
 /**
- * Find every run of fixes that stayed put for long enough to be worth logging.
+ * Find every run of fixes that stayed put for long enough to be worth logging, and every
+ * gap between reports long enough to count as the tracker going quiet.
  *
  * A single pass, anchoring on the first fix of a candidate run and extending while each
- * new fix is still within `radiusMeters` of that anchor. When one escapes, the run is kept
- * if it lasted long enough and a fresh run starts from the escaping fix.
+ * new fix is both within `radiusMeters` of that anchor and reported soon enough after the
+ * previous fix. When either check fails, the run is kept if it lasted long enough and a
+ * fresh run starts from the fix that broke it.
  *
  * Anchoring on the first fix rather than on a rolling centre means a boat drifting slowly
  * in one direction eventually breaks the run instead of the window creeping along with it,
  * which is the behaviour a logbook wants: dragging an anchor is not staying put.
  *
- * Note this measures position, not speed, so a tracker that sleeps and reports twice three
- * hours apart from the same berth is correctly read as three hours stopped.
+ * A long silence is treated the same way: a tracker that sleeps and reports twice three
+ * hours apart from the same berth is *not* three hours confirmed stopped — it is however
+ * long it was actually seen there, followed by a gap that gets its own "signal lost" line
+ * rather than being folded silently into the stop.
  */
 const findStationarySegments = (
   events: LogbookEvent[],
   radiusMeters: number,
   minimumDurationMinutes: number,
-): StationarySegment[] => {
+  signalLostAfterMinutes: number,
+): { segments: StationarySegment[]; gaps: SignalGap[] } => {
   const minimumDurationMs = minimumDurationMinutes * 60_000;
+  const signalLostMs = signalLostAfterMinutes * 60_000;
   const segments: StationarySegment[] = [];
+  const gaps: SignalGap[] = [];
 
   let anchorIndex = 0;
 
-  const flush = (endIndex: number) => {
+  const flush = (endIndex: number, endedBy: StationarySegment["endedBy"]) => {
     const anchor = events[anchorIndex];
     const last = events[endIndex];
     if (last.timestamp - anchor.timestamp < minimumDurationMs) return;
@@ -106,12 +132,29 @@ const findStationarySegments = (
       endTimestamp: last.timestamp,
       latitude: run.reduce((sum, e) => sum + e.latitude, 0) / run.length,
       longitude: run.reduce((sum, e) => sum + e.longitude, 0) / run.length,
+      endedBy,
     });
   };
 
   for (let index = 1; index < events.length; index += 1) {
-    const anchor = events[anchorIndex];
+    const previous = events[index - 1];
     const event = events[index];
+
+    if (event.timestamp - previous.timestamp >= signalLostMs) {
+      flush(index - 1, "signal-lost");
+      gaps.push({
+        lastContactTimestamp: previous.timestamp,
+        lastLatitude: previous.latitude,
+        lastLongitude: previous.longitude,
+        resumedTimestamp: event.timestamp,
+        resumedLatitude: event.latitude,
+        resumedLongitude: event.longitude,
+      });
+      anchorIndex = index;
+      continue;
+    }
+
+    const anchor = events[anchorIndex];
     const distance = haversineMeters(
       anchor.latitude,
       anchor.longitude,
@@ -120,14 +163,14 @@ const findStationarySegments = (
     );
 
     if (distance > radiusMeters) {
-      flush(index - 1);
+      flush(index - 1, "moved");
       anchorIndex = index;
     }
   }
 
-  if (events.length > 0) flush(events.length - 1);
+  if (events.length > 0) flush(events.length - 1, "day-end");
 
-  return segments;
+  return { segments, gaps };
 };
 
 /** A contiguous run of fixes inside one timing point's radius. */
@@ -258,19 +301,11 @@ export function buildLogbook(args: {
   const firstEvent = events[0];
   const lastEvent = events[events.length - 1];
 
-  entries.push({
-    timestamp: firstEvent.timestamp,
-    kind: "first",
-    title: "First report of the day",
-    detail: formatPosition(firstEvent.latitude, firstEvent.longitude),
-    latitude: firstEvent.latitude,
-    longitude: firstEvent.longitude,
-  });
-
-  const stationarySegments = findStationarySegments(
+  const { segments: stationarySegments, gaps } = findStationarySegments(
     events,
     config.stationary.radiusMeters,
     config.stationary.minimumDurationMinutes,
+    config.signalLost.afterMinutes,
   );
 
   // Time ranges already accounted for by a stationary stop at a named place, per timing
@@ -280,9 +315,9 @@ export function buildLogbook(args: {
   // rather than however long the boat happened to sit inside the radius.
   const claimedByStop = new Map<number, Array<[number, number]>>();
 
-  for (const segment of stationarySegments) {
-    // Prefer a known name over coordinates when the boat stopped somewhere already on the
-    // chart, and only offer to name the place when it is somewhere new.
+  // Prefer a known name over coordinates when the boat stopped somewhere already on the
+  // chart, and only offer to name the place when it is somewhere new.
+  const resolvePlace = (segment: StationarySegment) => {
     const knownPoint = timingPoints.find(
       (timingPoint) =>
         haversineMeters(
@@ -305,22 +340,70 @@ export function buildLogbook(args: {
       claimedByStop.set(knownPoint.id, claimed);
     }
 
-    entries.push({
-      timestamp: segment.startTimestamp,
-      kind: "arrived",
-      title: `Arrived at ${place}`,
-      latitude: segment.latitude,
-      longitude: segment.longitude,
-      nameable,
-    });
+    return { place, nameable };
+  };
 
+  // The stop the day opened already sitting in, and the stop it closed still sitting in —
+  // if any. Both get folded into the "first"/"last" lines below instead of an adjacent
+  // "arrived"/"departed" line, because the day's data simply doesn't say the boat arrived
+  // partway through its first stop, nor that it departed its last: it was either already
+  // there, or still there when the reports stopped.
+  let openingStop: {
+    place: string;
+    nameable?: { latitude: number; longitude: number };
+  } | null = null;
+  let closingStop: { place: string; since: number } | null = null;
+
+  for (const segment of stationarySegments) {
+    const { place, nameable } = resolvePlace(segment);
+    const isOpeningStop = segment.startTimestamp === firstEvent.timestamp;
+    const isClosingStop = segment.endedBy === "day-end";
+
+    if (isOpeningStop) {
+      openingStop = { place, nameable };
+    } else {
+      entries.push({
+        timestamp: segment.startTimestamp,
+        kind: "arrived",
+        title: `Arrived at ${place}`,
+        latitude: segment.latitude,
+        longitude: segment.longitude,
+        nameable,
+      });
+    }
+
+    if (isClosingStop) {
+      closingStop = { place, since: segment.startTimestamp };
+    } else if (segment.endedBy === "moved") {
+      entries.push({
+        timestamp: segment.endTimestamp,
+        kind: "departed",
+        title: `Departed ${place}`,
+        detail: `Stopped ${formatDurationBetween(segment.startTimestamp, segment.endTimestamp)}`,
+        latitude: segment.latitude,
+        longitude: segment.longitude,
+      });
+    }
+    // endedBy "signal-lost" gets no departed line here — the matching gap below already
+    // says what actually happened, and it did not depart.
+  }
+
+  for (const gap of gaps) {
     entries.push({
-      timestamp: segment.endTimestamp,
-      kind: "departed",
-      title: `Departed ${place}`,
-      detail: `Stopped ${formatDurationBetween(segment.startTimestamp, segment.endTimestamp)}`,
-      latitude: segment.latitude,
-      longitude: segment.longitude,
+      timestamp: gap.lastContactTimestamp,
+      kind: "signal-lost",
+      title: "Signal lost",
+      detail: `No reports received for ${formatDurationBetween(gap.lastContactTimestamp, gap.resumedTimestamp)}`,
+      latitude: gap.lastLatitude,
+      longitude: gap.lastLongitude,
+    });
+    entries.push({
+      timestamp: gap.resumedTimestamp,
+      kind: "signal-restored",
+      title: "Signal restored",
+      detail: `First report after ${formatDurationBetween(gap.lastContactTimestamp, gap.resumedTimestamp)} without one`,
+      latitude: gap.resumedLatitude,
+      longitude: gap.resumedLongitude,
     });
   }
 
@@ -367,16 +450,40 @@ export function buildLogbook(args: {
   entries.push(...buildVoltageEntries(voltageRuns, config));
 
   entries.push({
+    timestamp: firstEvent.timestamp,
+    kind: "first",
+    title: "First report of the day",
+    detail: openingStop
+      ? `Already stopped at ${openingStop.place}`
+      : formatPosition(firstEvent.latitude, firstEvent.longitude),
+    latitude: firstEvent.latitude,
+    longitude: firstEvent.longitude,
+    nameable: openingStop?.nameable,
+  });
+
+  entries.push({
     timestamp: lastEvent.timestamp,
     kind: "last",
     title: "Last report of the day",
-    detail: formatPosition(lastEvent.latitude, lastEvent.longitude),
+    detail: closingStop
+      ? `Stopped at ${closingStop.place} since ${formatTime24(closingStop.since)}`
+      : formatPosition(lastEvent.latitude, lastEvent.longitude),
     latitude: lastEvent.latitude,
     longitude: lastEvent.longitude,
   });
 
-  // Chronological, but the opening and closing lines always bookend the day even when
-  // something else shares their timestamp.
+  return sortLogbookEntries(entries);
+}
+
+/**
+ * Chronological order, except the opening and closing lines always bookend the day even
+ * when something else shares their timestamp.
+ *
+ * Exported so callers that splice in entries `buildLogbook` does not know about — currently
+ * just free-text remarks, loaded from the database rather than derived from fixes — can
+ * re-sort the combined list the same way.
+ */
+export function sortLogbookEntries(entries: LogbookEntry[]): LogbookEntry[] {
   const rank = (entry: LogbookEntry) =>
     entry.kind === "first" ? -1 : entry.kind === "last" ? 1 : 0;
 
