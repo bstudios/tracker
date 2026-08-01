@@ -18,6 +18,7 @@ import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { formatUtcDay } from "~/utils/dateTime";
 import type { Route } from "./+types/index";
 import {
+  IconAntennaBars5,
   IconDeviceAnalytics,
   IconDownload,
   IconGitCompare,
@@ -157,6 +158,21 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               />
               <Text size="xs" mt={7}>
                 Historic comparison
+              </Text>
+            </UnstyledButton>
+            <UnstyledButton
+              className={classes.item}
+              component={Link}
+              to={`/${loaderData.password}/${loaderData.urlDate}/signal`}
+              prefetch="intent"
+            >
+              <IconAntennaBars5
+                color={theme.colors.pink[6]}
+                size={32}
+                stroke={1.5}
+              />
+              <Text size="xs" mt={7}>
+                Signal map
               </Text>
             </UnstyledButton>
             <UnstyledButton

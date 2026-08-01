@@ -11,6 +11,7 @@ export type DatePage =
   | "logbook"
   | "timings"
   | "analysis"
+  | "signal"
   | "historic"
   | "none";
 
@@ -26,6 +27,7 @@ const PAGES: Array<{ page: DatePage; label: string; path: string }> = [
   { page: "logbook", label: "Logbook", path: "/logbook" },
   { page: "timings", label: "Timing points", path: "/timings" },
   { page: "analysis", label: "Analysis", path: "/analysis" },
+  { page: "signal", label: "Signal map", path: "/signal" },
 ];
 
 export function DatePageNav({ password, urlDate, current }: DatePageNavProps) {

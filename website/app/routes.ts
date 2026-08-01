@@ -25,6 +25,7 @@ export default [
       "./routes/date/timingPointsHistoricComparison.tsx",
     ),
     route("analysis", "./routes/date/analysis.tsx"),
+    route("signal", "./routes/date/signal.tsx"),
     route("export.gpx", "./routes/date/downloadGPX.ts"),
     index("./routes/date/index.tsx"),
   ]),

@@ -36,7 +36,7 @@ type MapPerformanceConfig = {
 };
 
 export const mapPerformanceConfig: Record<
-  "analysis" | "live",
+  "analysis" | "live" | "signal",
   MapPerformanceConfig
 > = {
   analysis: {
@@ -49,6 +49,14 @@ export const mapPerformanceConfig: Record<
   },
   live: {
     centerConstraintPaddingRatio: 1.1,
+    zoomOutPaddingRatio: 0.25,
+    tileLayer: {
+      ...poorNetworkTileLayerDefaults,
+      updateInterval: 500,
+    },
+  },
+  signal: {
+    centerConstraintPaddingRatio: 0.9,
     zoomOutPaddingRatio: 0.25,
     tileLayer: {
       ...poorNetworkTileLayerDefaults,
