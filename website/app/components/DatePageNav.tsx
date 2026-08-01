@@ -11,6 +11,7 @@ export type DatePage =
   | "logbook"
   | "timings"
   | "analysis"
+  | "signal"
   | "historic"
   | "none";
 

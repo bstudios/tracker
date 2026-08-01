@@ -18,6 +18,7 @@ import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { formatUtcDay } from "~/utils/dateTime";
 import type { Route } from "./+types/index";
 import {
+  IconAntennaBars5,
   IconDeviceAnalytics,
   IconDownload,
   IconGitCompare,
@@ -87,18 +88,22 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               Change date
             </Anchor>
           </Group>
-          <SimpleGrid cols={3} mt="md">
-            <UnstyledButton
-              className={classes.item}
-              component={Link}
-              to={`/${loaderData.password}/${loaderData.urlDate}/live`}
-              prefetch="render"
-            >
-              <IconMap color={theme.colors.pink[6]} size={32} stroke={1.5} />
-              <Text size="xs" mt={7}>
-                Live tracking map
+          <UnstyledButton
+            className={classes.primaryItem}
+            component={Link}
+            to={`/${loaderData.password}/${loaderData.urlDate}/live`}
+            prefetch="render"
+            mt="md"
+          >
+            <IconMap color={theme.colors.pink[6]} size={40} stroke={1.5} />
+            <div>
+              <Text fw={600}>Live tracking map</Text>
+              <Text size="xs" c="dimmed">
+                See where the device is right now
               </Text>
-            </UnstyledButton>
+            </div>
+          </UnstyledButton>
+          <SimpleGrid cols={3} mt="md">
             <UnstyledButton
               className={classes.item}
               component={Link}
@@ -157,6 +162,21 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               />
               <Text size="xs" mt={7}>
                 Historic comparison
+              </Text>
+            </UnstyledButton>
+            <UnstyledButton
+              className={classes.item}
+              component={Link}
+              to={`/${loaderData.password}/${loaderData.urlDate}/signal`}
+              prefetch="intent"
+            >
+              <IconAntennaBars5
+                color={theme.colors.pink[6]}
+                size={32}
+                stroke={1.5}
+              />
+              <Text size="xs" mt={7}>
+                Signal map
               </Text>
             </UnstyledButton>
             <UnstyledButton
