@@ -99,7 +99,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <div>
               <Text fw={600}>Live tracking map</Text>
               <Text size="xs" c="dimmed">
-                See where the device is right now
+                Follow along on the map
               </Text>
             </div>
           </UnstyledButton>
