@@ -1,6 +1,6 @@
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
-import { and, isNotNull, ne, sql } from "drizzle-orm";
+import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { DateTime } from "luxon";
 import * as schema from "~/database/schema.d";
@@ -53,16 +53,30 @@ export class DailyLogbookEmailWorkflow extends WorkflowEntrypoint<
 
       // Only devices that both want the email and actually recorded something, so a boat
       // laid up for the winter does not send an empty log every morning.
+      //
+      // The correlation to the outer device has to go through `eq`/`and` rather than a bare
+      // `sql` template: interpolating `Column` objects into `sql` renders their column name
+      // only, with no table qualifier, so `events.device_id = devices.id` came out as the
+      // unqualified `device_id = id` — which SQLite resolved against `events` on both sides
+      // and so only matched by coincidence. Wrapping the correlated condition in `eq` (which
+      // does qualify) and running it as its own subquery keeps the reference correct.
+      const eventCountSubquery = db
+        .select({ count: sql<number>`count(*)`.as("count") })
+        .from(schema.Events)
+        .where(
+          and(
+            eq(schema.Events.deviceId, schema.Devices.id),
+            eq(schema.Events.dateString, dateString),
+          ),
+        )
+        .as("eventCountSubquery");
+
       const rows = await db
         .select({
           id: schema.Devices.id,
           name: schema.Devices.name,
           recipients: schema.Devices.logbookEmailRecipients,
-          eventCount: sql<number>`(
-              SELECT COUNT(*) FROM ${schema.Events}
-              WHERE ${schema.Events.deviceId} = ${schema.Devices.id}
-                AND ${schema.Events.dateString} = ${dateString}
-            )`,
+          eventCount: sql<number>`(select "count" from ${eventCountSubquery})`,
         })
         .from(schema.Devices)
         .where(
