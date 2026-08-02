@@ -1,6 +1,5 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import {
-  Alert,
   Button,
   Card,
   Center,
@@ -447,9 +446,8 @@ export async function loader({ context }: Route.LoaderArgs) {
           : longitude;
 
       const deviceSpeedMps = deviceSpeedMpsByPointId.get(pointId) ?? null;
+      const hasDeviceSpeed = deviceSpeedMps != null;
       const speedMps = deviceSpeedMps ?? derivedSpeedMps;
-      const source: "device" | "derived" =
-        deviceSpeedMps != null ? "device" : "derived";
 
       return {
         id: segment.id,
@@ -460,7 +458,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         speedMps,
         speedDisplay: fromMetersPerSecond(speedMps, displaySpeedUnit),
         isStop: speedMps < STOP_SPEED_THRESHOLD_MPS,
-        source,
+        hasDeviceSpeed,
         derivedSpeedMph,
         positions: [
           [previousLatitude, previousLongitude],
@@ -468,16 +466,31 @@ export async function loader({ context }: Route.LoaderArgs) {
         ] as [number, number][],
       };
     })
-    .filter(
-      (segment) =>
-        Number.isFinite(segment.pointId) &&
-        Number.isFinite(segment.speedDisplay) &&
-        segment.speedMps >= 0 &&
-        // Device-reported speeds are trusted outright; the outlier cutoff only exists to
-        // drop GPS-jitter spikes in the derived fallback.
-        (segment.source === "device" ||
-          segment.derivedSpeedMph <= outlierThresholdMph),
-    );
+    .filter((segment) => {
+      if (
+        !Number.isFinite(segment.pointId) ||
+        !Number.isFinite(segment.speedDisplay) ||
+        segment.speedMps < 0
+      ) {
+        return false;
+      }
+
+      // Once a device has a configured input unit, its own reported speed is authoritative:
+      // readings it didn't report are skipped outright rather than patched with a noisy
+      // position-derived guess. Devices with no input unit configured keep the original
+      // fully-derived behaviour, GPS-jitter outliers and all.
+      return inputSpeedUnit
+        ? segment.hasDeviceSpeed
+        : segment.derivedSpeedMph <= outlierThresholdMph;
+    })
+    .map(({ hasDeviceSpeed, derivedSpeedMph, ...segment }) => segment);
+
+  // Points whose segment didn't survive the filter above (an unreported device reading, or
+  // a GPS-jitter outlier) have no resolved speed at all, so the chart should skip them
+  // rather than show a false dip to zero.
+  const resolvedPointIds = new Set(
+    routeSegments.map((segment) => segment.pointId),
+  );
 
   routeSegments.forEach((segment) => {
     const pointIndex = pointIndexById.get(segment.pointId);
@@ -519,27 +532,22 @@ export async function loader({ context }: Route.LoaderArgs) {
     (count, segment) => (segment.isStop ? count + 1 : count),
     0,
   );
-  const deviceSourcedSegmentCount = routeSegments.reduce(
-    (count, segment) => (segment.source === "device" ? count + 1 : count),
-    0,
-  );
-  const fallbackSegmentCount = routeSegments.length - deviceSourcedSegmentCount;
-  const usedFallbackForSomeReadings =
-    inputSpeedUnit != null && fallbackSegmentCount > 0;
 
   const chartSpeedCapMps = Math.min(
     toMetersPerSecond(Number(summaryRow[0]?.chartSpeedCapMph ?? 0), "mph"),
     toMetersPerSecond(outlierThresholdMph, "mph"),
   );
 
-  const chartData = pointsWithDerivedSpeed.map((point) => ({
-    pointId: point.id,
-    timestampMillis: toMillisTimestamp(point.timestamp),
-    timestampLabel: displayDateTime(point.timestamp).toFormat("HH:mm"),
-    speedDisplay: Number(
-      fromMetersPerSecond(point.speedMps, displaySpeedUnit).toFixed(2),
-    ),
-  }));
+  const chartData = pointsWithDerivedSpeed
+    .filter((point, index) => index === 0 || resolvedPointIds.has(point.id))
+    .map((point) => ({
+      pointId: point.id,
+      timestampMillis: toMillisTimestamp(point.timestamp),
+      timestampLabel: displayDateTime(point.timestamp).toFormat("HH:mm"),
+      speedDisplay: Number(
+        fromMetersPerSecond(point.speedMps, displaySpeedUnit).toFixed(2),
+      ),
+    }));
 
   return {
     date: refDate.toISO(),
@@ -574,9 +582,6 @@ export async function loader({ context }: Route.LoaderArgs) {
       speedUnit: displaySpeedUnit,
       speedUnitLabel,
       hasDeviceSpeed: inputSpeedUnit != null,
-      deviceSourcedSegmentCount,
-      fallbackSegmentCount,
-      usedFallbackForSomeReadings,
     },
     route: {
       points: pointsWithDerivedSpeed,
@@ -643,21 +648,11 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               <Title order={2}>Speed over time</Title>
               <Text c="dimmed" size="sm">
                 {loaderData.summary.hasDeviceSpeed
-                  ? "Uses this device's own reported speed where available, falling back to speed calculated from tracked position samples otherwise."
+                  ? "Uses this device's own reported speed. Readings it didn't report a speed for are skipped."
                   : "Derived from the tracked position samples for the day."}
               </Text>
             </div>
           </Group>
-          {loaderData.summary.usedFallbackForSomeReadings ? (
-            <Alert color="yellow" mb="md" title="Some readings are calculated">
-              {loaderData.summary.fallbackSegmentCount} of{" "}
-              {loaderData.summary.fallbackSegmentCount +
-                loaderData.summary.deviceSourcedSegmentCount}{" "}
-              readings for this day didn&apos;t include a reported speed from
-              the device, so calculated speed (derived from position samples,
-              which can be noisy) is shown for those instead.
-            </Alert>
-          ) : null}
           {loaderData.chartData.length === 0 ? (
             <Center py="xl">
               <Stack align="center">
