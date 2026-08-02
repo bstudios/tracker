@@ -88,6 +88,15 @@ const formatPosition = (latitude: number, longitude: number) =>
   `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 
 /**
+ * How long a device must have gone quiet before its most recent report is worth calling
+ * the "last" of the day, rather than just the latest one so far.
+ *
+ * Without this, a day in progress shows its most recent ping — received seconds ago — as
+ * "Last report of the day", which reads as if tracking has stopped when it plainly hasn't.
+ */
+const LAST_REPORT_QUIET_THRESHOLD_MS = 20 * 60_000;
+
+/**
  * Find every run of fixes that stayed put for long enough to be worth logging, and every
  * gap between reports long enough to count as the tracker going quiet.
  *
@@ -292,8 +301,14 @@ export function buildLogbook(args: {
   timingPoints: LogbookTimingPoint[];
   config: LogbookConfig;
   voltageRuns: VoltageRun[];
+  /**
+   * Unix milliseconds "now", used to decide whether the day's latest report is stale
+   * enough yet to call it the "last" of the day. Omit for a day that is already over,
+   * where the latest report is always the last one.
+   */
+  now?: number;
 }): LogbookEntry[] {
-  const { events, timingPoints, config, voltageRuns } = args;
+  const { events, timingPoints, config, voltageRuns, now } = args;
   if (events.length === 0) return [];
 
   const entries: LogbookEntry[] = [];
@@ -461,16 +476,22 @@ export function buildLogbook(args: {
     nameable: openingStop?.nameable,
   });
 
-  entries.push({
-    timestamp: lastEvent.timestamp,
-    kind: "last",
-    title: "Last report of the day",
-    detail: closingStop
-      ? `Stopped at ${closingStop.place} since ${formatTime24(closingStop.since)}`
-      : formatPosition(lastEvent.latitude, lastEvent.longitude),
-    latitude: lastEvent.latitude,
-    longitude: lastEvent.longitude,
-  });
+  const lastReportIsStale =
+    now === undefined ||
+    now - lastEvent.timestamp >= LAST_REPORT_QUIET_THRESHOLD_MS;
+
+  if (lastReportIsStale) {
+    entries.push({
+      timestamp: lastEvent.timestamp,
+      kind: "last",
+      title: "Last report of the day",
+      detail: closingStop
+        ? `Stopped at ${closingStop.place} since ${formatTime24(closingStop.since)}`
+        : formatPosition(lastEvent.latitude, lastEvent.longitude),
+      latitude: lastEvent.latitude,
+      longitude: lastEvent.longitude,
+    });
+  }
 
   return sortLogbookEntries(entries);
 }

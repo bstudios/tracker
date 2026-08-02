@@ -143,6 +143,7 @@ export async function loadLogbook(
       ...run,
       startTimestamp: toMillisTimestamp(run.startTimestamp),
     })),
+    now: Date.now(),
   });
 
   // Remarks are free text against a timestamp, not derived from fixes, so they are merged
