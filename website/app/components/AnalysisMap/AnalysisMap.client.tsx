@@ -12,6 +12,7 @@ import {
 } from "react-leaflet";
 import { theme } from "~/root";
 import { formatDateTimeMed } from "~/utils/dateTime";
+import { fromMetersPerSecond, SPEED_UNIT_LABELS, type SpeedUnit } from "~/utils/speedUnits";
 import {
   createRestrictedViewportBounds,
   mapPerformanceConfig,
@@ -35,7 +36,7 @@ export type AnalysisRouteSegment = {
   timeDeltaSeconds: number;
   distanceMeters: number;
   speedMps: number;
-  speedMph: number;
+  speedDisplay: number;
   isStop: boolean;
   positions: [number, number][];
 };
@@ -53,11 +54,13 @@ export function AnalysisMap(props: {
   points: AnalysisRoutePoint[];
   segments: AnalysisRouteSegment[];
   highlightedPointId?: number | null;
+  speedUnit?: SpeedUnit;
 }) {
   const config = mapPerformanceConfig.analysis;
+  const speedUnit = props.speedUnit ?? "mph";
 
   const speedRange = getSpeedRange(
-    props.segments.map((segment) => segment.speedMph),
+    props.segments.map((segment) => segment.speedDisplay),
   );
 
   const highlightedPoint =
@@ -101,7 +104,7 @@ export function AnalysisMap(props: {
             key={segment.id}
             positions={segment.positions}
             pathOptions={{
-              color: speedToColor(segment.speedMph, speedRange),
+              color: speedToColor(segment.speedDisplay, speedRange),
               weight: 5,
             }}
           />
@@ -119,7 +122,10 @@ export function AnalysisMap(props: {
             <Popup>
               {formatDateTimeMed(highlightedPoint.timestamp)}
               <br />
-              {(highlightedPoint.speedMps * 2.2369362921).toFixed(1)} mph
+              {fromMetersPerSecond(highlightedPoint.speedMps, speedUnit).toFixed(
+                1,
+              )}{" "}
+              {SPEED_UNIT_LABELS[speedUnit]}
             </Popup>
           </Marker>
         ) : null}

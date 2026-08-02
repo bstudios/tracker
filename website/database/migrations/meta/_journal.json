@@ -71,6 +71,13 @@
       "when": 1785144825704,
       "tag": "0009_thin_wolverine",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785676095218,
+      "tag": "0010_flashy_amphibian",
+      "breakpoints": true
     }
   ]
 }

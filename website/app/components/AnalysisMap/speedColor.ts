@@ -7,8 +7,8 @@ const PALETTE_STOPS: Array<{ t: number; color: RgbColor }> = [
 ];
 
 export type SpeedRange = {
-  minMph: number;
-  maxMph: number;
+  min: number;
+  max: number;
 };
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
@@ -19,23 +19,23 @@ const formatHexChannel = (value: number) =>
 const rgbToHex = ([red, green, blue]: RgbColor) =>
   `#${formatHexChannel(red)}${formatHexChannel(green)}${formatHexChannel(blue)}`;
 
-export const getSpeedRange = (speedMphValues: number[]): SpeedRange => {
-  const validSpeeds = speedMphValues.filter(
-    (speedMph) => Number.isFinite(speedMph) && speedMph >= 0,
+export const getSpeedRange = (speedValues: number[]): SpeedRange => {
+  const validSpeeds = speedValues.filter(
+    (speedValue) => Number.isFinite(speedValue) && speedValue >= 0,
   );
 
   if (validSpeeds.length === 0) {
-    return { minMph: 0, maxMph: 1 };
+    return { min: 0, max: 1 };
   }
 
-  const minMph = Math.min(...validSpeeds);
-  const maxMph = Math.max(...validSpeeds);
+  const min = Math.min(...validSpeeds);
+  const max = Math.max(...validSpeeds);
 
-  if (Math.abs(maxMph - minMph) < 1e-9) {
-    return { minMph, maxMph: minMph + 1 };
+  if (Math.abs(max - min) < 1e-9) {
+    return { min, max: min + 1 };
   }
 
-  return { minMph, maxMph };
+  return { min, max };
 };
 
 const interpolateRgb = (
@@ -65,27 +65,27 @@ const getPaletteColorAt = (normalizedValue: number) => {
   return rgbToHex(PALETTE_STOPS[PALETTE_STOPS.length - 1].color);
 };
 
-export const speedToColor = (speedMph: number, speedRange: SpeedRange) => {
-  const range = speedRange.maxMph - speedRange.minMph;
-  const normalized = range > 0 ? (speedMph - speedRange.minMph) / range : 0;
+export const speedToColor = (speedValue: number, speedRange: SpeedRange) => {
+  const range = speedRange.max - speedRange.min;
+  const normalized = range > 0 ? (speedValue - speedRange.min) / range : 0;
   return getPaletteColorAt(normalized);
 };
 
 export const buildLegendTicks = (speedRange: SpeedRange, tickCount = 5) => {
   if (tickCount < 2) {
-    const speedMph = speedRange.minMph;
-    return [{ speedMph, color: speedToColor(speedMph, speedRange) }];
+    const speedValue = speedRange.min;
+    return [{ speedValue, color: speedToColor(speedValue, speedRange) }];
   }
 
-  const span = speedRange.maxMph - speedRange.minMph;
+  const span = speedRange.max - speedRange.min;
 
   return Array.from({ length: tickCount }, (_, index) => {
     const ratio = index / (tickCount - 1);
-    const speedMph = speedRange.minMph + span * ratio;
+    const speedValue = speedRange.min + span * ratio;
 
     return {
-      speedMph,
-      color: speedToColor(speedMph, speedRange),
+      speedValue,
+      color: speedToColor(speedValue, speedRange),
     };
   });
 };
