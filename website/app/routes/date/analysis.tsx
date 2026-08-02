@@ -1,5 +1,6 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import {
+  Alert,
   Button,
   Card,
   Center,
@@ -25,13 +26,23 @@ import {
   formatDateTimeWithSeconds,
   toMillisTimestamp,
 } from "~/utils/dateTime";
+import {
+  fromMetersPerSecond,
+  isSpeedUnit,
+  SPEED_UNIT_LABELS,
+  toMetersPerSecond,
+  type SpeedUnit,
+} from "~/utils/speedUnits";
 import type { Route } from "./+types/analysis";
 
-const MPS_TO_MPH = 2.2369362921;
+const DEFAULT_DISPLAY_SPEED_UNIT: SpeedUnit = "mph";
 
-const getYAxisStepMph = (maxSpeedMph: number) => {
-  if (maxSpeedMph <= 10) return 1;
-  if (maxSpeedMph <= 50) return 5;
+// Below this a point is considered stationary regardless of which speed source produced it.
+const STOP_SPEED_THRESHOLD_MPS = 0.5;
+
+const getYAxisStep = (maxSpeedDisplay: number) => {
+  if (maxSpeedDisplay <= 10) return 1;
+  if (maxSpeedDisplay <= 50) return 5;
   return 10;
 };
 
@@ -40,8 +51,9 @@ const SpeedChart = memo(function SpeedChart(props: {
     pointId: number;
     timestampMillis: number;
     timestampLabel: string;
-    speedMph: number;
+    speedDisplay: number;
   }>;
+  speedUnitLabel: string;
   normalizedChartYAxisMax: number;
   yAxisTicks: number[];
   onHoveredPointIdChange: (pointId: number | null) => void;
@@ -57,7 +69,7 @@ const SpeedChart = memo(function SpeedChart(props: {
         }>
       | undefined;
     const entries = payload ?? [];
-    const speedEntry = entries.find((entry) => entry.name === "speedMph");
+    const speedEntry = entries.find((entry) => entry.name === "speedDisplay");
     const rawPointId = entries.find((entry) =>
       Number.isFinite(Number(entry?.payload?.pointId)),
     )?.payload?.pointId;
@@ -102,7 +114,7 @@ const SpeedChart = memo(function SpeedChart(props: {
             : "-"}
         </Text>
         <Text size="sm" fw={600} c={speedEntry?.color}>
-          Speed: {speedValue.toFixed(1)} mph
+          Speed: {speedValue.toFixed(1)} {props.speedUnitLabel}
         </Text>
       </div>
     );
@@ -116,11 +128,19 @@ const SpeedChart = memo(function SpeedChart(props: {
       type="default"
       withGradient={false}
       fillOpacity={0.35}
-      series={[{ name: "speedMph", color: "red.7", label: "Speed (mph)" }]}
+      series={[
+        {
+          name: "speedDisplay",
+          color: "red.7",
+          label: `Speed (${props.speedUnitLabel})`,
+        },
+      ]}
       curveType="linear"
       withDots={false}
       withLegend={false}
-      valueFormatter={(value: number) => `${value.toFixed(1)} mph`}
+      valueFormatter={(value: number) =>
+        `${value.toFixed(1)} ${props.speedUnitLabel}`
+      }
       tickLine="y"
       withXAxis
       withYAxis
@@ -168,6 +188,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         timestamp: Schema.Events.timestamp,
         latitude: Schema.Events.latitude,
         longitude: Schema.Events.longitude,
+        data: Schema.Events.data,
       })
       .from(Schema.Events)
       .where(
@@ -240,6 +261,11 @@ export async function loader({ context }: Route.LoaderArgs) {
     END
   `;
 
+  // Position-derived speed, purely from consecutive GPS fixes. Used as a fallback wherever
+  // the device itself doesn't report a usable speed, and to figure out which of *those*
+  // fallback segments are GPS-jitter outliers (see outlierThresholdMph below). Deliberately
+  // still expressed in mph here rather than the device's display unit — it's an internal
+  // filtering signal, never shown to the user.
   const segments = db.$with("segments").as(
     db
       .select({
@@ -255,13 +281,9 @@ export async function loader({ context }: Route.LoaderArgs) {
         timeDeltaSeconds: timeDeltaSecondsExpression.as("time_delta_seconds"),
         distanceMeters: distanceMetersExpression.as("distance_meters"),
         speedMps: speedMpsExpression.as("speed_mps"),
-        speedMph: sql<number>`${speedMpsExpression} * ${MPS_TO_MPH}`.as(
+        speedMph: sql<number>`${speedMpsExpression} * 2.2369362921`.as(
           "speed_mph",
         ),
-        isStop:
-          sql<number>`CASE WHEN ${speedMpsExpression} < 0.5 THEN 1 ELSE 0 END`.as(
-            "is_stop",
-          ),
       })
       .from(pointsWithPrevious)
       .where(sql`${pointsWithPrevious.previousPointId} IS NOT NULL`),
@@ -274,7 +296,6 @@ export async function loader({ context }: Route.LoaderArgs) {
         speedMps: segments.speedMps,
         distanceMeters: segments.distanceMeters,
         timeDeltaSeconds: segments.timeDeltaSeconds,
-        isStop: segments.isStop,
         speedPercentileBucket:
           sql<number>`NTILE(100) OVER (ORDER BY ${segments.speedMps})`.as(
             "speed_percentile_bucket",
@@ -284,7 +305,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       .where(sql`${segments.speedMps} >= 0`),
   );
 
-  const [pointRows, segmentRows, summaryRow] = await Promise.all([
+  const [pointRows, segmentRows, summaryRow, deviceRows] = await Promise.all([
     db
       .with(points)
       .select({
@@ -292,6 +313,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         timestamp: points.timestamp,
         latitude: points.latitude,
         longitude: points.longitude,
+        data: points.data,
       })
       .from(points)
       .orderBy(asc(points.timestamp)),
@@ -305,7 +327,6 @@ export async function loader({ context }: Route.LoaderArgs) {
         distanceMeters: segments.distanceMeters,
         speedMps: segments.speedMps,
         speedMph: segments.speedMph,
-        isStop: segments.isStop,
         previousLatitude: segments.previousLatitude,
         previousLongitude: segments.previousLongitude,
         latitude: segments.latitude,
@@ -317,7 +338,6 @@ export async function loader({ context }: Route.LoaderArgs) {
       .with(points, pointsWithPrevious, segments, rankedSegments)
       .select({
         points: sql<number>`(SELECT COUNT(*) FROM points)`.as("points"),
-        segments: sql<number>`(SELECT COUNT(*) FROM segments)`.as("segments"),
         outlierThresholdMph: sql<number>`
           MIN(
             120.0,
@@ -338,19 +358,52 @@ export async function loader({ context }: Route.LoaderArgs) {
             0
           )
         `.as("chart_speed_cap_mph"),
-        stopCount:
-          sql<number>`(SELECT COALESCE(SUM(is_stop), 0) FROM segments)`.as(
-            "stop_count",
-          ),
-        slowestSegmentSpeedMph: sql<
-          number | null
-        >`(SELECT MIN(speed_mph) FROM segments)`.as(
-          "slowest_segment_speed_mph",
-        ),
       })
       .from(points)
       .limit(1),
+    db
+      .select({
+        inputSpeedUnit: Schema.Devices.inputSpeedUnit,
+        displaySpeedUnit: Schema.Devices.displaySpeedUnit,
+      })
+      .from(Schema.Devices)
+      .where(eq(Schema.Devices.id, deviceId))
+      .limit(1),
   ]);
+
+  const inputSpeedUnit: SpeedUnit | null = isSpeedUnit(
+    deviceRows[0]?.inputSpeedUnit,
+  )
+    ? deviceRows[0].inputSpeedUnit
+    : null;
+  const displaySpeedUnit: SpeedUnit = isSpeedUnit(
+    deviceRows[0]?.displaySpeedUnit,
+  )
+    ? deviceRows[0].displaySpeedUnit
+    : DEFAULT_DISPLAY_SPEED_UNIT;
+  const speedUnitLabel = SPEED_UNIT_LABELS[displaySpeedUnit];
+
+  // A device's own reported speed usually comes straight off the GPS chip's Doppler
+  // velocity, not by differencing noisy position fixes, so it's far less jumpy than the
+  // derived calculation above. Prefer it per-point wherever the device actually reported
+  // one (a reported value of exactly 0 is indistinguishable from "field absent, ingestion
+  // defaulted it to 0", so those points still fall back to the derived speed).
+  const deviceSpeedMpsByPointId = new Map<number, number>();
+  if (inputSpeedUnit) {
+    for (const point of pointRows) {
+      const rawSpeed = point.data?.location?.speed;
+      if (
+        typeof rawSpeed === "number" &&
+        Number.isFinite(rawSpeed) &&
+        rawSpeed > 0
+      ) {
+        deviceSpeedMpsByPointId.set(
+          Number(point.id),
+          toMetersPerSecond(rawSpeed, inputSpeedUnit),
+        );
+      }
+    }
+  }
 
   const pointsWithDerivedSpeed = pointRows.map((point) => ({
     id: Number(point.id),
@@ -380,8 +433,8 @@ export async function loader({ context }: Route.LoaderArgs) {
       const timestamp = Number(segment.timestamp);
       const timeDeltaSeconds = Number(segment.timeDeltaSeconds);
       const distanceMeters = Number(segment.distanceMeters);
-      const speedMps = Number(segment.speedMps);
-      const speedMph = Number(segment.speedMph);
+      const derivedSpeedMps = Number(segment.speedMps);
+      const derivedSpeedMph = Number(segment.speedMph);
       const latitude = Number(segment.latitude);
       const longitude = Number(segment.longitude);
       const previousLatitude =
@@ -393,6 +446,11 @@ export async function loader({ context }: Route.LoaderArgs) {
           ? Number(segment.previousLongitude)
           : longitude;
 
+      const deviceSpeedMps = deviceSpeedMpsByPointId.get(pointId) ?? null;
+      const speedMps = deviceSpeedMps ?? derivedSpeedMps;
+      const source: "device" | "derived" =
+        deviceSpeedMps != null ? "device" : "derived";
+
       return {
         id: segment.id,
         pointId,
@@ -400,8 +458,10 @@ export async function loader({ context }: Route.LoaderArgs) {
         timeDeltaSeconds,
         distanceMeters,
         speedMps,
-        speedMph,
-        isStop: Boolean(segment.isStop),
+        speedDisplay: fromMetersPerSecond(speedMps, displaySpeedUnit),
+        isStop: speedMps < STOP_SPEED_THRESHOLD_MPS,
+        source,
+        derivedSpeedMph,
         positions: [
           [previousLatitude, previousLongitude],
           [latitude, longitude],
@@ -411,9 +471,12 @@ export async function loader({ context }: Route.LoaderArgs) {
     .filter(
       (segment) =>
         Number.isFinite(segment.pointId) &&
-        Number.isFinite(segment.speedMph) &&
-        segment.speedMph >= 0 &&
-        segment.speedMph <= outlierThresholdMph,
+        Number.isFinite(segment.speedDisplay) &&
+        segment.speedMps >= 0 &&
+        // Device-reported speeds are trusted outright; the outlier cutoff only exists to
+        // drop GPS-jitter spikes in the derived fallback.
+        (segment.source === "device" ||
+          segment.derivedSpeedMph <= outlierThresholdMph),
     );
 
   routeSegments.forEach((segment) => {
@@ -428,24 +491,27 @@ export async function loader({ context }: Route.LoaderArgs) {
       segment.timeDeltaSeconds > 0 ? total + segment.timeDeltaSeconds : total,
     0,
   );
-  const totalFilteredDistanceMeters = routeSegments.reduce(
-    (total, segment) => total + segment.distanceMeters,
+  // Distance implied by whichever speed source was resolved for the segment, not the raw
+  // GPS distance — keeps the average consistent with the (possibly device-sourced) speeds
+  // being averaged, and matches the old distance/time formula exactly when everything is
+  // derived (speedMps *is* distanceMeters / timeDeltaSeconds in that case).
+  const totalResolvedDistanceMeters = routeSegments.reduce(
+    (total, segment) => total + segment.speedMps * segment.timeDeltaSeconds,
     0,
   );
 
-  const filteredAverageSpeedMph =
+  const filteredAverageSpeedMps =
     totalFilteredTimeDeltaSeconds > 0
-      ? (totalFilteredDistanceMeters / totalFilteredTimeDeltaSeconds) *
-        MPS_TO_MPH
+      ? totalResolvedDistanceMeters / totalFilteredTimeDeltaSeconds
       : 0;
-  const filteredMaxSpeedMph = routeSegments.reduce(
-    (max, segment) => Math.max(max, segment.speedMph),
+  const filteredMaxSpeedMps = routeSegments.reduce(
+    (max, segment) => Math.max(max, segment.speedMps),
     0,
   );
-  const filteredSlowestSegmentSpeedMph =
+  const filteredSlowestSegmentSpeedMps =
     routeSegments.length > 0
       ? routeSegments.reduce(
-          (min, segment) => Math.min(min, segment.speedMph),
+          (min, segment) => Math.min(min, segment.speedMps),
           Number.POSITIVE_INFINITY,
         )
       : null;
@@ -453,12 +519,26 @@ export async function loader({ context }: Route.LoaderArgs) {
     (count, segment) => (segment.isStop ? count + 1 : count),
     0,
   );
+  const deviceSourcedSegmentCount = routeSegments.reduce(
+    (count, segment) => (segment.source === "device" ? count + 1 : count),
+    0,
+  );
+  const fallbackSegmentCount = routeSegments.length - deviceSourcedSegmentCount;
+  const usedFallbackForSomeReadings =
+    inputSpeedUnit != null && fallbackSegmentCount > 0;
+
+  const chartSpeedCapMps = Math.min(
+    toMetersPerSecond(Number(summaryRow[0]?.chartSpeedCapMph ?? 0), "mph"),
+    toMetersPerSecond(outlierThresholdMph, "mph"),
+  );
 
   const chartData = pointsWithDerivedSpeed.map((point) => ({
     pointId: point.id,
     timestampMillis: toMillisTimestamp(point.timestamp),
     timestampLabel: displayDateTime(point.timestamp).toFormat("HH:mm"),
-    speedMph: Number((point.speedMps * MPS_TO_MPH).toFixed(2)),
+    speedDisplay: Number(
+      fromMetersPerSecond(point.speedMps, displaySpeedUnit).toFixed(2),
+    ),
   }));
 
   return {
@@ -469,20 +549,34 @@ export async function loader({ context }: Route.LoaderArgs) {
     summary: {
       points: summaryRow[0]?.points ?? 0,
       segments: routeSegments.length,
-      averageSpeedMph: Number(filteredAverageSpeedMph.toFixed(1)),
-      maxSpeedMph: Number(filteredMaxSpeedMph.toFixed(1)),
-      chartSpeedCapMph: Number(
-        Math.min(
-          Number(summaryRow[0]?.chartSpeedCapMph ?? filteredMaxSpeedMph),
-          outlierThresholdMph,
-        ).toFixed(1),
+      averageSpeedDisplay: Number(
+        fromMetersPerSecond(filteredAverageSpeedMps, displaySpeedUnit).toFixed(
+          1,
+        ),
+      ),
+      maxSpeedDisplay: Number(
+        fromMetersPerSecond(filteredMaxSpeedMps, displaySpeedUnit).toFixed(1),
+      ),
+      chartSpeedCapDisplay: Number(
+        fromMetersPerSecond(chartSpeedCapMps, displaySpeedUnit).toFixed(1),
       ),
       stopCount: filteredStopCount,
-      slowestSegmentSpeedMph:
-        filteredSlowestSegmentSpeedMph != null &&
-        Number.isFinite(filteredSlowestSegmentSpeedMph)
-          ? Number(filteredSlowestSegmentSpeedMph.toFixed(1))
+      slowestSegmentSpeedDisplay:
+        filteredSlowestSegmentSpeedMps != null &&
+        Number.isFinite(filteredSlowestSegmentSpeedMps)
+          ? Number(
+              fromMetersPerSecond(
+                filteredSlowestSegmentSpeedMps,
+                displaySpeedUnit,
+              ).toFixed(1),
+            )
           : null,
+      speedUnit: displaySpeedUnit,
+      speedUnitLabel,
+      hasDeviceSpeed: inputSpeedUnit != null,
+      deviceSourcedSegmentCount,
+      fallbackSegmentCount,
+      usedFallbackForSomeReadings,
     },
     route: {
       points: pointsWithDerivedSpeed,
@@ -495,23 +589,22 @@ export default function Page({ loaderData }: Route.ComponentProps) {
   const [hoveredPointId, setHoveredPointId] = useState<number | null>(null);
   const liveMapHref = `/${loaderData.password}/${loaderData.urlDate}/live`;
   const segmentSpeeds = loaderData.route.segments.map(
-    (segment) => segment.speedMph,
+    (segment) => segment.speedDisplay,
   );
   const hasSegmentSpeeds = segmentSpeeds.length > 0;
   const speedRange = getSpeedRange(segmentSpeeds);
   const legendTicks = hasSegmentSpeeds ? buildLegendTicks(speedRange, 5) : [];
   const chartYAxisMax = Math.max(
     5,
-    loaderData.summary.chartSpeedCapMph,
-    loaderData.summary.maxSpeedMph * 1.05,
-    loaderData.summary.averageSpeedMph,
+    loaderData.summary.chartSpeedCapDisplay,
+    loaderData.summary.maxSpeedDisplay * 1.05,
+    loaderData.summary.averageSpeedDisplay,
   );
-  const yAxisStepMph = getYAxisStepMph(chartYAxisMax);
-  const normalizedChartYAxisMax =
-    Math.ceil(chartYAxisMax / yAxisStepMph) * yAxisStepMph;
+  const yAxisStep = getYAxisStep(chartYAxisMax);
+  const normalizedChartYAxisMax = Math.ceil(chartYAxisMax / yAxisStep) * yAxisStep;
   const yAxisTicks = Array.from(
-    { length: normalizedChartYAxisMax / yAxisStepMph + 1 },
-    (_, index) => index * yAxisStepMph,
+    { length: normalizedChartYAxisMax / yAxisStep + 1 },
+    (_, index) => index * yAxisStep,
   );
 
   return (
@@ -528,13 +621,19 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <Text c="dimmed" size="sm">
               Average speed
             </Text>
-            <Title order={3}>{loaderData.summary.averageSpeedMph} mph</Title>
+            <Title order={3}>
+              {loaderData.summary.averageSpeedDisplay}{" "}
+              {loaderData.summary.speedUnitLabel}
+            </Title>
           </Card>
           <Card withBorder>
             <Text c="dimmed" size="sm">
               Maximum speed
             </Text>
-            <Title order={3}>{loaderData.summary.maxSpeedMph} mph</Title>
+            <Title order={3}>
+              {loaderData.summary.maxSpeedDisplay}{" "}
+              {loaderData.summary.speedUnitLabel}
+            </Title>
           </Card>
         </SimpleGrid>
 
@@ -543,10 +642,22 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <div>
               <Title order={2}>Speed over time</Title>
               <Text c="dimmed" size="sm">
-                Derived from the tracked position samples for the day.
+                {loaderData.summary.hasDeviceSpeed
+                  ? "Uses this device's own reported speed where available, falling back to speed calculated from tracked position samples otherwise."
+                  : "Derived from the tracked position samples for the day."}
               </Text>
             </div>
           </Group>
+          {loaderData.summary.usedFallbackForSomeReadings ? (
+            <Alert color="yellow" mb="md" title="Some readings are calculated">
+              {loaderData.summary.fallbackSegmentCount} of{" "}
+              {loaderData.summary.fallbackSegmentCount +
+                loaderData.summary.deviceSourcedSegmentCount}{" "}
+              readings for this day didn&apos;t include a reported speed from
+              the device, so calculated speed (derived from position samples,
+              which can be noisy) is shown for those instead.
+            </Alert>
+          ) : null}
           {loaderData.chartData.length === 0 ? (
             <Center py="xl">
               <Stack align="center">
@@ -559,6 +670,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
           ) : (
             <SpeedChart
               data={loaderData.chartData}
+              speedUnitLabel={loaderData.summary.speedUnitLabel}
               normalizedChartYAxisMax={normalizedChartYAxisMax}
               yAxisTicks={yAxisTicks}
               onHoveredPointIdChange={setHoveredPointId}
@@ -587,6 +699,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               points={loaderData.route.points}
               segments={loaderData.route.segments}
               highlightedPointId={hoveredPointId}
+              speedUnit={loaderData.summary.speedUnit}
             />
           )}
         </Card>
@@ -604,7 +717,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               <>
                 <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
                   {legendTicks.map((tick) => (
-                    <Group key={tick.speedMph} gap="xs" wrap="nowrap">
+                    <Group key={tick.speedValue} gap="xs" wrap="nowrap">
                       <div
                         style={{
                           width: 12,
@@ -614,13 +727,18 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                           flexShrink: 0,
                         }}
                       />
-                      <Text size="sm">{tick.speedMph.toFixed(1)} mph</Text>
+                      <Text size="sm">
+                        {tick.speedValue.toFixed(1)}{" "}
+                        {loaderData.summary.speedUnitLabel}
+                      </Text>
                     </Group>
                   ))}
                 </SimpleGrid>
                 <Text c="dimmed" size="xs">
-                  Min {speedRange.minMph.toFixed(1)} mph, max{" "}
-                  {speedRange.maxMph.toFixed(1)} mph.
+                  Min {speedRange.min.toFixed(1)}{" "}
+                  {loaderData.summary.speedUnitLabel}, max{" "}
+                  {speedRange.max.toFixed(1)} {loaderData.summary.speedUnitLabel}
+                  .
                 </Text>
               </>
             ) : (

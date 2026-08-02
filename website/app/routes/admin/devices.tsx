@@ -19,7 +19,23 @@ import {
 import { AccessPasswords } from "~/database/schema/AccessPasswords";
 import { Events } from "~/database/schema/Events";
 import { Devices } from "~/database/schema/Devices";
+import {
+  isSpeedUnit,
+  SPEED_UNIT_OPTIONS,
+  type SpeedUnit,
+} from "~/utils/speedUnits";
 import type { Route } from "./+types/devices";
+
+const DEFAULT_DISPLAY_SPEED_UNIT: SpeedUnit = "mph";
+const NO_INPUT_SPEED_UNIT_VALUE = "none";
+
+const INPUT_SPEED_UNIT_OPTIONS = [
+  {
+    value: NO_INPUT_SPEED_UNIT_VALUE,
+    label: "Not reported (use calculated speed)",
+  },
+  ...SPEED_UNIT_OPTIONS,
+];
 
 export const meta: MetaFunction = () => {
   return [{ title: "Device Admin" }];
@@ -47,6 +63,23 @@ const parseDeviceIconInput = (rawIcon: FormDataEntryValue | null) => {
     throw new Error("Invalid icon");
   }
   return icon;
+};
+
+const parseInputSpeedUnitInput = (rawUnit: FormDataEntryValue | null) => {
+  const unit = typeof rawUnit === "string" ? rawUnit : "";
+  if (unit === NO_INPUT_SPEED_UNIT_VALUE || unit === "") return null;
+  if (!isSpeedUnit(unit)) {
+    throw new Error("Invalid input speed unit");
+  }
+  return unit;
+};
+
+const parseDisplaySpeedUnitInput = (rawUnit: FormDataEntryValue | null) => {
+  const unit = typeof rawUnit === "string" ? rawUnit : "";
+  if (!isSpeedUnit(unit)) {
+    throw new Error("Invalid display speed unit");
+  }
+  return unit;
 };
 
 const parseDeviceIdInput = (rawId: FormDataEntryValue | null) => {
@@ -123,6 +156,8 @@ export async function loader({ context }: Route.LoaderArgs) {
       name: Devices.name,
       matchId: Devices.matchId,
       icon: Devices.icon,
+      inputSpeedUnit: Devices.inputSpeedUnit,
+      displaySpeedUnit: Devices.displaySpeedUnit,
       passwordCount: sql<number>`coalesce(${passwordCounts.passwordCount}, 0)`,
       eventCount: sql<number>`coalesce(${eventCounts.eventCount}, 0)`,
     })
@@ -146,10 +181,18 @@ export async function action({ context, request }: Route.ActionArgs) {
       (formData.get("matchId") as string | null) ?? "",
     );
     const icon = parseDeviceIconInput(formData.get("icon"));
+    const inputSpeedUnit = parseInputSpeedUnitInput(
+      formData.get("inputSpeedUnit"),
+    );
+    const displaySpeedUnit = parseDisplaySpeedUnitInput(
+      formData.get("displaySpeedUnit"),
+    );
     await ensureNameIsUnique(db, name);
     await ensureMatcherIsUnique(db, matchId);
 
-    await db.insert(Devices).values({ name, matchId, icon });
+    await db
+      .insert(Devices)
+      .values({ name, matchId, icon, inputSpeedUnit, displaySpeedUnit });
     return { success: true };
   }
 
@@ -162,12 +205,18 @@ export async function action({ context, request }: Route.ActionArgs) {
       (formData.get("matchId") as string | null) ?? "",
     );
     const icon = parseDeviceIconInput(formData.get("icon"));
+    const inputSpeedUnit = parseInputSpeedUnitInput(
+      formData.get("inputSpeedUnit"),
+    );
+    const displaySpeedUnit = parseDisplaySpeedUnitInput(
+      formData.get("displaySpeedUnit"),
+    );
     await ensureNameIsUnique(db, name, id);
     await ensureMatcherIsUnique(db, matchId, id);
 
     await db
       .update(Devices)
-      .set({ name, matchId, icon })
+      .set({ name, matchId, icon, inputSpeedUnit, displaySpeedUnit })
       .where(eq(Devices.id, id));
     return { success: true };
   }
@@ -211,8 +260,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
     <Container fluid p="md">
       <Title order={1}>Device Administration</Title>
       <Text c="dimmed" mb="md">
-        Manage device names, matchers, and map icons used to connect and display
-        incoming webhook data.
+        Manage device names, matchers, map icons, and speed units used to
+        connect and display incoming webhook data.
       </Text>
 
       <Form method="post">
@@ -231,6 +280,24 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             allowDeselect={false}
             required
           />
+          <Select
+            label="Input speed"
+            description="Unit of the speed this device itself reports"
+            name="inputSpeedUnit"
+            data={INPUT_SPEED_UNIT_OPTIONS}
+            defaultValue={NO_INPUT_SPEED_UNIT_VALUE}
+            allowDeselect={false}
+            required
+          />
+          <Select
+            label="Display speed"
+            description="Unit speeds are shown in for this device"
+            name="displaySpeedUnit"
+            data={SPEED_UNIT_OPTIONS}
+            defaultValue={DEFAULT_DISPLAY_SPEED_UNIT}
+            allowDeselect={false}
+            required
+          />
           <Button type="submit">Create</Button>
         </Group>
       </Form>
@@ -241,6 +308,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <Table.Th>Name</Table.Th>
             <Table.Th>Icon</Table.Th>
             <Table.Th>Matcher</Table.Th>
+            <Table.Th>Input speed</Table.Th>
+            <Table.Th>Display speed</Table.Th>
             <Table.Th>Passwords</Table.Th>
             <Table.Th>Events</Table.Th>
             <Table.Th>Actions</Table.Th>
@@ -284,6 +353,32 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                     form={`device-row-${device.id}`}
                     name="matchId"
                     defaultValue={device.matchId}
+                    required
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Select
+                    aria-label="Input speed"
+                    form={`device-row-${device.id}`}
+                    name="inputSpeedUnit"
+                    data={INPUT_SPEED_UNIT_OPTIONS}
+                    defaultValue={
+                      device.inputSpeedUnit ?? NO_INPUT_SPEED_UNIT_VALUE
+                    }
+                    allowDeselect={false}
+                    required
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Select
+                    aria-label="Display speed"
+                    form={`device-row-${device.id}`}
+                    name="displaySpeedUnit"
+                    data={SPEED_UNIT_OPTIONS}
+                    defaultValue={
+                      device.displaySpeedUnit ?? DEFAULT_DISPLAY_SPEED_UNIT
+                    }
+                    allowDeselect={false}
                     required
                   />
                 </Table.Td>

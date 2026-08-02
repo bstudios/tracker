@@ -21,4 +21,14 @@ export const Devices = sqliteTable("devices", {
   logbookEmailRecipients: text("logbook_email_recipients", {
     mode: "text",
   }).default(sql`NULL`),
+  // Unit that this device's own reported `data.location.speed` is sent in (one of
+  // SpeedUnit from ~/utils/speedUnits). NULL means this device doesn't report a usable
+  // speed field, so speed is always calculated from consecutive position samples instead.
+  inputSpeedUnit: text("input_speed_unit", { mode: "text" }).default(
+    sql`NULL`,
+  ),
+  // Unit speeds are shown in throughout the app for this device (one of SpeedUnit).
+  displaySpeedUnit: text("display_speed_unit", { mode: "text" })
+    .notNull()
+    .default("mph"),
 });
