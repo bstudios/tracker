@@ -1,0 +1,1 @@
+ALTER TABLE `devices` ADD `display_distance_unit` text DEFAULT 'km' NOT NULL;

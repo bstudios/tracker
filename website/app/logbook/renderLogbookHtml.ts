@@ -1,6 +1,7 @@
 import { formatTime24, formatUtcDay } from "~/utils/dateTime";
 import type { LogbookEntry, LogbookEntryKind } from "./buildLogbook";
 import { DISPLAY_TIME_ZONE } from "~/utils/dateTime";
+import { formatDistance, type DistanceUnit } from "~/utils/distanceUnits";
 /**
  * Rendering a logbook as standalone HTML.
  *
@@ -32,7 +33,7 @@ const KIND_LABELS: Record<LogbookEntryKind, string> = {
   remark: "Remark",
 };
 
-const renderRows = (entries: LogbookEntry[]) =>
+const renderRows = (entries: LogbookEntry[], distanceUnit: DistanceUnit) =>
   entries
     .map(
       (entry) => `<tr>
@@ -40,19 +41,26 @@ const renderRows = (entries: LogbookEntry[]) =>
       <td class="kind">${escapeHtml(KIND_LABELS[entry.kind])}</td>
       <td>${escapeHtml(entry.title)}</td>
       <td class="detail">${escapeHtml(entry.detail ?? "")}</td>
+      <td class="distance">${
+        entry.cumulativeDistanceMeters === undefined
+          ? ""
+          : escapeHtml(
+              formatDistance(entry.cumulativeDistanceMeters, distanceUnit),
+            )
+      }</td>
     </tr>`,
     )
     .join("\n");
 
-const renderTable = (entries: LogbookEntry[]) =>
+const renderTable = (entries: LogbookEntry[], distanceUnit: DistanceUnit) =>
   entries.length === 0
     ? `<p class="empty">No position reports were received on this day.</p>`
     : `<table>
     <thead>
-      <tr><th>Time</th><th>Type</th><th>Entry</th><th>Detail</th></tr>
+      <tr><th>Time</th><th>Type</th><th>Entry</th><th>Detail</th><th>Distance</th></tr>
     </thead>
     <tbody>
-${renderRows(entries)}
+${renderRows(entries, distanceUnit)}
     </tbody>
   </table>`;
 
@@ -63,6 +71,10 @@ type LogbookDocumentArgs = {
   eventCount: number;
   /** Say so on the document itself rather than letting it look like a complete day. */
   truncated?: boolean;
+  /** Unit the distance column and day total are shown in for this device. */
+  distanceUnit: DistanceUnit;
+  /** Total distance travelled across the whole day. */
+  totalDistanceMeters: number;
 };
 
 /** A complete printable document, for Browser Rendering to turn into a PDF. */
@@ -72,6 +84,8 @@ export const renderLogbookDocument = ({
   entries,
   eventCount,
   truncated,
+  distanceUnit,
+  totalDistanceMeters,
 }: LogbookDocumentArgs) => `<!doctype html>
 <html lang="en">
 <head>
@@ -97,6 +111,7 @@ export const renderLogbookDocument = ({
   .time { white-space: nowrap; font-variant-numeric: tabular-nums; width: 14%; }
   .kind { white-space: nowrap; color: #555; width: 14%; }
   .detail { color: #555; }
+  .distance { white-space: nowrap; font-variant-numeric: tabular-nums; color: #555; width: 10%; }
   .empty { color: #555; font-style: italic; }
   .warning { border: 1px solid #b58100; background: #fff8e1; color: #6b4e00;
              padding: 8px 10px; border-radius: 4px; margin-bottom: 14px; font-size: 10pt; }
@@ -108,7 +123,9 @@ export const renderLogbookDocument = ({
   <p class="subtitle">
     ${escapeHtml(formatUtcDay(dateString))} ·
     ${eventCount} position report${eventCount === 1 ? "" : "s"} condensed to
-    ${entries.length} entr${entries.length === 1 ? "y" : "ies"} · times shown are ${DISPLAY_TIME_ZONE} time.
+    ${entries.length} entr${entries.length === 1 ? "y" : "ies"} ·
+    ${escapeHtml(formatDistance(totalDistanceMeters, distanceUnit))} travelled ·
+    times shown are ${DISPLAY_TIME_ZONE} time.
   </p>
   ${
     truncated
@@ -117,7 +134,7 @@ export const renderLogbookDocument = ({
          ${eventCount} are included.</p>`
       : ""
   }
-  ${renderTable(entries)}
+  ${renderTable(entries, distanceUnit)}
   <footer>Generated automatically from tracked positions.</footer>
 </body>
 </html>`;
@@ -133,12 +150,15 @@ export const renderLogbookEmailHtml = ({
   dateString,
   entries,
   eventCount,
+  distanceUnit,
+  totalDistanceMeters,
 }: LogbookDocumentArgs) => `<div style="font-family:Helvetica,Arial,sans-serif;color:#111;font-size:14px;line-height:1.5">
   <h2 style="margin:0 0 2px">Logbook — ${escapeHtml(deviceName)}</h2>
   <p style="margin:0 0 16px;color:#555;font-size:13px">
     ${escapeHtml(formatUtcDay(dateString))} · ${eventCount} position report${
       eventCount === 1 ? "" : "s"
-    } · times shown are ${DISPLAY_TIME_ZONE} time.
+    } · ${escapeHtml(formatDistance(totalDistanceMeters, distanceUnit))} travelled ·
+    times shown are ${DISPLAY_TIME_ZONE} time.
   </p>
   ${
     entries.length === 0
@@ -156,9 +176,16 @@ export const renderLogbookEmailHtml = ({
       <td style="padding:5px 10px 5px 0;border-bottom:1px solid #e0e0e0">${escapeHtml(
         entry.title,
       )}</td>
-      <td style="padding:5px 0;border-bottom:1px solid #e0e0e0;color:#555">${escapeHtml(
+      <td style="padding:5px 10px 5px 0;border-bottom:1px solid #e0e0e0;color:#555">${escapeHtml(
         entry.detail ?? "",
       )}</td>
+      <td style="padding:5px 0;border-bottom:1px solid #e0e0e0;color:#555;white-space:nowrap">${
+        entry.cumulativeDistanceMeters === undefined
+          ? ""
+          : escapeHtml(
+              formatDistance(entry.cumulativeDistanceMeters, distanceUnit),
+            )
+      }</td>
     </tr>`,
       )
       .join("\n")}
@@ -174,9 +201,12 @@ export const renderLogbookText = ({
   deviceName,
   dateString,
   entries,
+  distanceUnit,
+  totalDistanceMeters,
 }: LogbookDocumentArgs) =>
   [
     `Logbook - ${deviceName} - ${dateString}`,
+    `${formatDistance(totalDistanceMeters, distanceUnit)} travelled`,
     "",
     ...(entries.length === 0
       ? ["No position reports were received on this day."]
@@ -186,6 +216,9 @@ export const renderLogbookText = ({
             KIND_LABELS[entry.kind],
             entry.title,
             entry.detail ?? "",
+            entry.cumulativeDistanceMeters === undefined
+              ? ""
+              : formatDistance(entry.cumulativeDistanceMeters, distanceUnit),
           ]
             .filter((part) => part.length > 0)
             .join("  "),

@@ -24,9 +24,15 @@ import {
   SPEED_UNIT_OPTIONS,
   type SpeedUnit,
 } from "~/utils/speedUnits";
+import {
+  DISTANCE_UNIT_OPTIONS,
+  isDistanceUnit,
+  type DistanceUnit,
+} from "~/utils/distanceUnits";
 import type { Route } from "./+types/devices";
 
 const DEFAULT_DISPLAY_SPEED_UNIT: SpeedUnit = "mph";
+const DEFAULT_DISPLAY_DISTANCE_UNIT: DistanceUnit = "km";
 const NO_INPUT_SPEED_UNIT_VALUE = "none";
 
 const INPUT_SPEED_UNIT_OPTIONS = [
@@ -78,6 +84,14 @@ const parseDisplaySpeedUnitInput = (rawUnit: FormDataEntryValue | null) => {
   const unit = typeof rawUnit === "string" ? rawUnit : "";
   if (!isSpeedUnit(unit)) {
     throw new Error("Invalid display speed unit");
+  }
+  return unit;
+};
+
+const parseDisplayDistanceUnitInput = (rawUnit: FormDataEntryValue | null) => {
+  const unit = typeof rawUnit === "string" ? rawUnit : "";
+  if (!isDistanceUnit(unit)) {
+    throw new Error("Invalid display distance unit");
   }
   return unit;
 };
@@ -158,6 +172,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       icon: Devices.icon,
       inputSpeedUnit: Devices.inputSpeedUnit,
       displaySpeedUnit: Devices.displaySpeedUnit,
+      displayDistanceUnit: Devices.displayDistanceUnit,
       passwordCount: sql<number>`coalesce(${passwordCounts.passwordCount}, 0)`,
       eventCount: sql<number>`coalesce(${eventCounts.eventCount}, 0)`,
     })
@@ -187,12 +202,20 @@ export async function action({ context, request }: Route.ActionArgs) {
     const displaySpeedUnit = parseDisplaySpeedUnitInput(
       formData.get("displaySpeedUnit"),
     );
+    const displayDistanceUnit = parseDisplayDistanceUnitInput(
+      formData.get("displayDistanceUnit"),
+    );
     await ensureNameIsUnique(db, name);
     await ensureMatcherIsUnique(db, matchId);
 
-    await db
-      .insert(Devices)
-      .values({ name, matchId, icon, inputSpeedUnit, displaySpeedUnit });
+    await db.insert(Devices).values({
+      name,
+      matchId,
+      icon,
+      inputSpeedUnit,
+      displaySpeedUnit,
+      displayDistanceUnit,
+    });
     return { success: true };
   }
 
@@ -211,12 +234,22 @@ export async function action({ context, request }: Route.ActionArgs) {
     const displaySpeedUnit = parseDisplaySpeedUnitInput(
       formData.get("displaySpeedUnit"),
     );
+    const displayDistanceUnit = parseDisplayDistanceUnitInput(
+      formData.get("displayDistanceUnit"),
+    );
     await ensureNameIsUnique(db, name, id);
     await ensureMatcherIsUnique(db, matchId, id);
 
     await db
       .update(Devices)
-      .set({ name, matchId, icon, inputSpeedUnit, displaySpeedUnit })
+      .set({
+        name,
+        matchId,
+        icon,
+        inputSpeedUnit,
+        displaySpeedUnit,
+        displayDistanceUnit,
+      })
       .where(eq(Devices.id, id));
     return { success: true };
   }
@@ -260,8 +293,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
     <Container fluid p="md">
       <Title order={1}>Device Administration</Title>
       <Text c="dimmed" mb="md">
-        Manage device names, matchers, map icons, and speed units used to
-        connect and display incoming webhook data.
+        Manage device names, matchers, map icons, and speed/distance units used
+        to connect and display incoming webhook data.
       </Text>
 
       <Form method="post">
@@ -298,6 +331,15 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             allowDeselect={false}
             required
           />
+          <Select
+            label="Display distance"
+            description="Unit the logbook's distance column is shown in"
+            name="displayDistanceUnit"
+            data={DISTANCE_UNIT_OPTIONS}
+            defaultValue={DEFAULT_DISPLAY_DISTANCE_UNIT}
+            allowDeselect={false}
+            required
+          />
           <Button type="submit">Create</Button>
         </Group>
       </Form>
@@ -310,6 +352,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             <Table.Th>Matcher</Table.Th>
             <Table.Th>Input speed</Table.Th>
             <Table.Th>Display speed</Table.Th>
+            <Table.Th>Display distance</Table.Th>
             <Table.Th>Passwords</Table.Th>
             <Table.Th>Events</Table.Th>
             <Table.Th>Actions</Table.Th>
@@ -377,6 +420,20 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                     data={SPEED_UNIT_OPTIONS}
                     defaultValue={
                       device.displaySpeedUnit ?? DEFAULT_DISPLAY_SPEED_UNIT
+                    }
+                    allowDeselect={false}
+                    required
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Select
+                    aria-label="Display distance"
+                    form={`device-row-${device.id}`}
+                    name="displayDistanceUnit"
+                    data={DISTANCE_UNIT_OPTIONS}
+                    defaultValue={
+                      device.displayDistanceUnit ??
+                      DEFAULT_DISPLAY_DISTANCE_UNIT
                     }
                     allowDeselect={false}
                     required

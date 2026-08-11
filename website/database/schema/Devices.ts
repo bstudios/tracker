@@ -31,4 +31,9 @@ export const Devices = sqliteTable("devices", {
   displaySpeedUnit: text("display_speed_unit", { mode: "text" })
     .notNull()
     .default("mph"),
+  // Unit the logbook's cumulative distance column is shown in for this device (one of
+  // DistanceUnit from ~/utils/distanceUnits).
+  displayDistanceUnit: text("display_distance_unit", { mode: "text" })
+    .notNull()
+    .default("km"),
 });

@@ -54,6 +54,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
       entries: logbook.entries,
       eventCount: logbook.eventCount,
       truncated: logbook.truncated,
+      distanceUnit: logbook.displayDistanceUnit,
+      totalDistanceMeters: logbook.totalDistanceMeters,
     }),
     {
       headers: {
