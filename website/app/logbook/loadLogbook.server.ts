@@ -3,6 +3,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import * as Schema from "~/database/schema.d";
 import { toMillisTimestamp } from "~/utils/dateTime";
 import {
+  buildCumulativeDistanceLookup,
   buildLogbook,
   sortLogbookEntries,
   type LogbookEntry,
@@ -10,6 +11,9 @@ import {
 } from "./buildLogbook";
 import { parseLogbookConfig, type LogbookConfig } from "./config";
 import { loadVoltageRuns } from "./voltageRuns.server";
+import { isDistanceUnit, type DistanceUnit } from "~/utils/distanceUnits";
+
+const DEFAULT_DISPLAY_DISTANCE_UNIT: DistanceUnit = "km";
 
 /**
  * Loading a device's logbook for one UTC day.
@@ -26,6 +30,10 @@ export type LoadedLogbook = {
   eventCount: number;
   /** True when the day had more fixes than `MAX_EVENTS_PER_DAY` and was cut short. */
   truncated: boolean;
+  /** Unit distances are shown in throughout the app for this device. */
+  displayDistanceUnit: DistanceUnit;
+  /** Total distance travelled across the whole day. See `buildCumulativeDistanceLookup`. */
+  totalDistanceMeters: number;
 };
 
 /**
@@ -64,12 +72,17 @@ export async function loadLogbook(
     .select({
       name: Schema.Devices.name,
       logbookConfig: Schema.Devices.logbookConfig,
+      displayDistanceUnit: Schema.Devices.displayDistanceUnit,
     })
     .from(Schema.Devices)
     .where(eq(Schema.Devices.id, deviceId))
     .limit(1);
 
   if (!device) return null;
+
+  const displayDistanceUnit = isDistanceUnit(device.displayDistanceUnit)
+    ? device.displayDistanceUnit
+    : DEFAULT_DISPLAY_DISTANCE_UNIT;
 
   const config = readConfig(device.logbookConfig);
 
@@ -146,15 +159,24 @@ export async function loadLogbook(
     now: Date.now(),
   });
 
+  // Same lookup `buildLogbook` used internally to stamp its own entries, recomputed here so
+  // a remark — timestamped by hand, not derived from a fix — gets the same "distance so far
+  // as of this moment" figure instead of being left without one.
+  const distanceLookup = buildCumulativeDistanceLookup(events, config);
+
   // Remarks are free text against a timestamp, not derived from fixes, so they are merged
   // in here rather than inside `buildLogbook` — which stays pure and DB-free — and
   // re-sorted the same way it sorts its own entries.
-  const remarkEntries: LogbookEntry[] = remarks.map((remark) => ({
-    timestamp: toMillisTimestamp(remark.timestamp),
-    kind: "remark",
-    title: "Remark",
-    detail: remark.text,
-  }));
+  const remarkEntries: LogbookEntry[] = remarks.map((remark) => {
+    const timestamp = toMillisTimestamp(remark.timestamp);
+    return {
+      timestamp,
+      kind: "remark",
+      title: "Remark",
+      detail: remark.text,
+      cumulativeDistanceMeters: distanceLookup.at(timestamp),
+    };
+  });
 
   return {
     deviceName: device.name,
@@ -165,6 +187,8 @@ export async function loadLogbook(
     config,
     eventCount: events.length,
     truncated,
+    displayDistanceUnit,
+    totalDistanceMeters: distanceLookup.totalMeters,
   };
 }
 

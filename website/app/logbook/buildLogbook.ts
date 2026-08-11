@@ -58,6 +58,14 @@ export type LogbookEntry = {
    * place without the viewer needing admin access.
    */
   nameable?: { latitude: number; longitude: number };
+  /**
+   * Total distance travelled since the start of the day, up to this entry's timestamp. See
+   * `buildCumulativeDistanceLookup` for how GPS wander is kept out of this number. Optional
+   * only because entries spliced in by callers (currently just remarks) are plain object
+   * literals rather than something `buildLogbook` had a chance to stamp — every entry that
+   * `buildLogbook` itself returns has it set.
+   */
+  cumulativeDistanceMeters?: number;
 };
 
 /** A run of consecutive fixes that stayed within the stationary radius of each other. */
@@ -181,6 +189,135 @@ const findStationarySegments = (
 
   return { segments, gaps };
 };
+
+export type CumulativeDistanceLookup = {
+  /** Total metres travelled from the start of the day up to and including `timestamp`. */
+  at: (timestamp: number) => number;
+  /** Total metres travelled across the whole day. */
+  totalMeters: number;
+};
+
+/**
+ * Turn a day of fixes into a cumulative distance total that is not fooled by GPS wander.
+ *
+ * A tracker's fixes drift by several metres even when nothing has moved, and naively
+ * summing the distance between every consecutive pair turns that drift into a total that
+ * climbs all day regardless of whether the boat went anywhere. Two defences, layered:
+ *
+ * 1. Whenever the boat is inside a `findStationarySegments` stop, every fix in that stop is
+ *    treated as one point rather than summed pairwise — a stop the log calls "here for six
+ *    hours" contributes zero distance, not six hours of dockside wobble.
+ * 2. Outside a recognised stop — underway, or parked for less than the stop's minimum
+ *    duration — distance is measured from the last *accepted* fix rather than the
+ *    immediately previous one, and a step shorter than `distance.noiseFloorMeters` is not
+ *    added and does not become the new accepted fix. This is what stops slow zig-zag jitter
+ *    from quietly walking the total up during a mooring too brief to count as a proper stop,
+ *    without also needing a second, smaller stationary-radius setting.
+ *
+ * A gap long enough to count as the tracker going quiet (`signalLost.afterMinutes`) is not
+ * counted as distance either: the path taken while silent is unknown, so the jump from the
+ * last position seen to the first position on resumption is not travel that can be claimed.
+ */
+export function buildCumulativeDistanceLookup(
+  events: LogbookEvent[],
+  config: LogbookConfig,
+): CumulativeDistanceLookup {
+  if (events.length === 0) {
+    return { at: () => 0, totalMeters: 0 };
+  }
+
+  const { segments } = findStationarySegments(
+    events,
+    config.stationary.radiusMeters,
+    config.stationary.minimumDurationMinutes,
+    config.signalLost.afterMinutes,
+  );
+  const signalLostMs = config.signalLost.afterMinutes * 60_000;
+  const { noiseFloorMeters } = config.distance;
+
+  // Parallel to `events`: cumulative metres travelled up to and including that fix.
+  const cumulativeByIndex: number[] = new Array(events.length);
+  cumulativeByIndex[0] = 0;
+
+  let total = 0;
+  let reference = events[0];
+  let segmentPointer = 0;
+
+  // Which stationary segment, if any, a timestamp falls inside. Advances forward only —
+  // valid because both `events` and `segments` are already in chronological order, and this
+  // is called with a non-decreasing sequence of timestamps below.
+  const segmentIndexAt = (timestamp: number): number | null => {
+    while (
+      segmentPointer < segments.length &&
+      segments[segmentPointer].endTimestamp < timestamp
+    ) {
+      segmentPointer += 1;
+    }
+    const segment = segments[segmentPointer];
+    return segment &&
+      timestamp >= segment.startTimestamp &&
+      timestamp <= segment.endTimestamp
+      ? segmentPointer
+      : null;
+  };
+
+  let referenceSegment = segmentIndexAt(events[0].timestamp);
+
+  for (let index = 1; index < events.length; index += 1) {
+    const previous = events[index - 1];
+    const event = events[index];
+    const eventSegment = segmentIndexAt(event.timestamp);
+
+    if (event.timestamp - previous.timestamp >= signalLostMs) {
+      // Unknown path across the silence: don't count it, and start fresh once contact
+      // resumes rather than measuring from wherever the tracker was last seen.
+      reference = event;
+      referenceSegment = eventSegment;
+    } else if (eventSegment !== null && eventSegment === referenceSegment) {
+      // Still inside the same stop as the reference fix: slide the reference forward
+      // without adding distance, so that whenever the boat does leave, the departure step
+      // is measured from here rather than from wherever the stop happened to begin.
+      reference = event;
+    } else {
+      const step = haversineMeters(
+        reference.latitude,
+        reference.longitude,
+        event.latitude,
+        event.longitude,
+      );
+      if (step >= noiseFloorMeters) {
+        total += step;
+        reference = event;
+        referenceSegment = eventSegment;
+      }
+      // Below the noise floor: too small to trust as real motion. Leave the reference
+      // where it is so a run of small steps in the same direction cannot each individually
+      // dodge the floor and quietly add up to a false total.
+    }
+
+    cumulativeByIndex[index] = total;
+  }
+
+  // Last fix at or before `timestamp`, by binary search. Entries timestamped off the fix
+  // list entirely — currently just hand-typed remarks — fall back to the most recent fix
+  // on or before them, the latest point distance is actually known for.
+  const at = (timestamp: number): number => {
+    if (timestamp < events[0].timestamp) return 0;
+    let low = 0;
+    let high = events.length - 1;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (events[mid].timestamp <= timestamp) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return cumulativeByIndex[low];
+  };
+
+  return { at, totalMeters: total };
+}
 
 /** A contiguous run of fixes inside one timing point's radius. */
 type TimingPointVisit = {
@@ -322,6 +459,12 @@ export function buildLogbook(args: {
     config.stationary.minimumDurationMinutes,
     config.signalLost.afterMinutes,
   );
+
+  // Recomputes the same stationary segments internally — a second pass over one day's
+  // fixes is cheap, and keeping this self-contained means any caller building entries from
+  // raw fixes (just `loadLogbook.server.ts`'s remarks, today) can get the same numbers
+  // without reaching into `buildLogbook`'s internals.
+  const distanceLookup = buildCumulativeDistanceLookup(events, config);
 
   // Time ranges already accounted for by a stationary stop at a named place, per timing
   // point. Stopping inside a timing point's radius otherwise gets picked up twice — once
@@ -493,7 +636,12 @@ export function buildLogbook(args: {
     });
   }
 
-  return sortLogbookEntries(entries);
+  const entriesWithDistance = entries.map((entry) => ({
+    ...entry,
+    cumulativeDistanceMeters: distanceLookup.at(entry.timestamp),
+  }));
+
+  return sortLogbookEntries(entriesWithDistance);
 }
 
 /**

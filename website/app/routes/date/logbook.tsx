@@ -48,6 +48,7 @@ import {
   isDayComplete,
 } from "~/logbook/pdfArchive.server";
 import { DISPLAY_TIME_ZONE, formatTime24, formatUtcDay } from "~/utils/dateTime";
+import { formatDistance } from "~/utils/distanceUnits";
 import { rebuildTimingPointH3Coverage } from "~/utils/timingPointH3";
 import type { Route } from "./+types/logbook";
 
@@ -76,6 +77,8 @@ export async function loader({ context }: Route.LoaderArgs) {
     entries: logbook?.entries ?? [],
     eventCount: logbook?.eventCount ?? 0,
     truncated: logbook?.truncated ?? false,
+    displayDistanceUnit: logbook?.displayDistanceUnit ?? "km",
+    totalDistanceMeters: logbook?.totalDistanceMeters ?? 0,
     // Today's log is still growing, so there is nothing settled to download yet.
     canDownloadPdf: isDayComplete(urlDate) && (logbook?.eventCount ?? 0) > 0,
     ...adjacent,
@@ -205,6 +208,8 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
     nextDate,
     canDownloadPdf,
     truncated,
+    displayDistanceUnit,
+    totalDistanceMeters,
   } = loaderData;
 
   const [namingEntry, setNamingEntry] = useState<LogbookEntry | null>(null);
@@ -291,7 +296,9 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
               {deviceName ? `${deviceName} · ` : ""}
               {eventCount} position report{eventCount === 1 ? "" : "s"},
               condensed to {entries.length} entr
-              {entries.length === 1 ? "y" : "ies"}. Times are local.
+              {entries.length === 1 ? "y" : "ies"} ·{" "}
+              {formatDistance(totalDistanceMeters, displayDistanceUnit)}{" "}
+              travelled. Times are local.
             </Text>
           </div>
           <Button
@@ -328,6 +335,7 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
                 <Table.Th w={110}>Type</Table.Th>
                 <Table.Th>Entry</Table.Th>
                 <Table.Th>Detail</Table.Th>
+                <Table.Th w={100}>Distance</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -370,6 +378,16 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
                           </Button>
                         ) : null}
                       </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" c="dimmed">
+                        {entry.cumulativeDistanceMeters === undefined
+                          ? ""
+                          : formatDistance(
+                              entry.cumulativeDistanceMeters,
+                              displayDistanceUnit,
+                            )}
+                      </Text>
                     </Table.Td>
                   </Table.Tr>
                 );

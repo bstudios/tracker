@@ -13,6 +13,12 @@ export const LOGBOOK_DEFAULT_STATIONARY_MINUTES = 15;
 export const LOGBOOK_DEFAULT_TIMING_POINT_DWELL_SECONDS = 60;
 export const LOGBOOK_DEFAULT_MINIMUM_READINGS = 2;
 export const LOGBOOK_DEFAULT_SIGNAL_LOST_MINUTES = 20;
+/**
+ * Consumer GPS fixes wander by several metres even standing still. A step shorter than
+ * this is assumed to be that wander rather than real travel, so it is left out of the
+ * cumulative distance total. See `computeCumulativeDistance` in `buildLogbook.ts`.
+ */
+export const LOGBOOK_DEFAULT_DISTANCE_NOISE_FLOOR_METERS = 20;
 
 const voltageBandSchema = z
   .object({
@@ -116,6 +122,22 @@ export const logbookConfigSchema = z.object({
   voltage: z
     .object({ sources: z.array(voltageSourceSchema).max(5).default([]) })
     .default({ sources: [] }),
+  distance: z
+    .object({
+      /**
+       * A step between two consecutive accepted fixes below this distance is treated as
+       * GPS wander, not travel, and is not added to the cumulative distance total. Set to
+       * 0 to trust every fix at face value.
+       */
+      noiseFloorMeters: z
+        .number()
+        .min(0)
+        .max(1000)
+        .default(LOGBOOK_DEFAULT_DISTANCE_NOISE_FLOOR_METERS),
+    })
+    .default({
+      noiseFloorMeters: LOGBOOK_DEFAULT_DISTANCE_NOISE_FLOOR_METERS,
+    }),
 });
 
 export type LogbookConfig = z.infer<typeof logbookConfigSchema>;
@@ -143,6 +165,9 @@ export const LOGBOOK_CONFIG_EXAMPLE = JSON.stringify(
     },
     timingPointVisit: {
       minimumDwellSeconds: LOGBOOK_DEFAULT_TIMING_POINT_DWELL_SECONDS,
+    },
+    distance: {
+      noiseFloorMeters: LOGBOOK_DEFAULT_DISTANCE_NOISE_FLOOR_METERS,
     },
     voltage: {
       sources: [
