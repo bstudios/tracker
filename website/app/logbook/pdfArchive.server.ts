@@ -116,12 +116,32 @@ export const logbookPdfFilename = (deviceName: string, dateString: string) =>
   `logbook-${deviceName.replace(/[^\w-]+/g, "-")}-${dateString}.pdf`;
 
 /**
+ * Drop the archived PDF for a single day.
+ *
+ * The right call whenever an edit is confined to one day — a remark is filed against the
+ * day it was written for and cannot appear in any other day's log, so wiping the rest of
+ * the archive would only force pointless re-renders of days that have not changed.
+ */
+export async function invalidateLogbookArchiveDay(
+  env: Env,
+  deviceId: number,
+  dateString: string,
+) {
+  await env.R2_BUCKET.delete(logbookPdfKey(deviceId, dateString));
+}
+
+/**
  * Drop every archived PDF for a device.
  *
  * A finished day's *events* never change, but the log built from them does: naming a place
  * turns coordinates into a name on every past day the boat stopped there, and editing the
  * voltage bands changes which power lines appear. Both rewrite history, so the whole
  * device's archive is dropped rather than trying to work out which days were affected.
+ *
+ * Reach for `invalidateLogbookArchiveDay` instead when the change only affects one day.
+ * With a single device in the bucket this function is "delete everything", so calling it
+ * for a day-scoped edit throws away the entire archive and every day has to be rendered
+ * again — the expensive thing this cache exists to avoid.
  *
  * Cheap to be wrong about — a missing object is simply re-rendered on next request.
  */

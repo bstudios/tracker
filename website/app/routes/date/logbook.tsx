@@ -45,6 +45,7 @@ import {
 import { parseLogbookConfig } from "~/logbook/config";
 import {
   invalidateLogbookArchive,
+  invalidateLogbookArchiveDay,
   isDayComplete,
 } from "~/logbook/pdfArchive.server";
 import { DISPLAY_TIME_ZONE, formatTime24, formatUtcDay } from "~/utils/dateTime";
@@ -120,8 +121,13 @@ export async function action({ context, request }: Route.ActionArgs) {
 
     // A finished day's PDF is rendered once and cached in R2 (see pdfArchive.server.ts) —
     // a remark added afterwards would otherwise never appear in a downloaded copy until
-    // someone happens to hit "Regenerate PDF".
-    await invalidateLogbookArchive(getCloudflareContext(context).env, deviceId);
+    // someone happens to hit "Regenerate PDF". Only this day's copy, though: the remark is
+    // filed against `urlDate` and cannot show up in any other day's log.
+    await invalidateLogbookArchiveDay(
+      getCloudflareContext(context).env,
+      deviceId,
+      urlDate,
+    );
 
     return { error: null };
   }

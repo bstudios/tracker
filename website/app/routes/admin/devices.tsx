@@ -1,4 +1,4 @@
-import { getDb } from "~/routeContext";
+import { getCloudflareContext, getDb } from "~/routeContext";
 import {
   Button,
   Container,
@@ -19,6 +19,7 @@ import {
 import { AccessPasswords } from "~/database/schema/AccessPasswords";
 import { Events } from "~/database/schema/Events";
 import { Devices } from "~/database/schema/Devices";
+import { invalidateLogbookArchive } from "~/logbook/pdfArchive.server";
 import {
   isSpeedUnit,
   SPEED_UNIT_OPTIONS,
@@ -240,6 +241,18 @@ export async function action({ context, request }: Route.ActionArgs) {
     await ensureNameIsUnique(db, name, id);
     await ensureMatcherIsUnique(db, matchId, id);
 
+    // Both of these are printed into the logbook PDF — the name in its title, the unit on
+    // every distance in it — so read them before the write to see whether the archived
+    // copies still match what the page would now render.
+    const [before] = await db
+      .select({
+        name: Devices.name,
+        displayDistanceUnit: Devices.displayDistanceUnit,
+      })
+      .from(Devices)
+      .where(eq(Devices.id, id))
+      .limit(1);
+
     await db
       .update(Devices)
       .set({
@@ -251,6 +264,15 @@ export async function action({ context, request }: Route.ActionArgs) {
         displayDistanceUnit,
       })
       .where(eq(Devices.id, id));
+
+    if (
+      before &&
+      (before.name !== name ||
+        before.displayDistanceUnit !== displayDistanceUnit)
+    ) {
+      await invalidateLogbookArchive(getCloudflareContext(context).env, id);
+    }
+
     return { success: true };
   }
 
