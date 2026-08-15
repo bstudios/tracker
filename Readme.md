@@ -33,6 +33,8 @@ The schedule lives on the Workflow binding in `wrangler.jsonc` (`schedules`), no
 
 Rendered PDFs for finished days are kept in the `R2_BUCKET` R2 bucket, so a day is only ever rendered once — whichever of the nightly email or the page's **Download PDF** link comes first warms the cache for the other. Today's log is never cached, because it is still growing; the download link only appears once the UTC day has ended. Deleting an object from the bucket simply causes it to be re-rendered on next request, so the bucket is safe to prune.
 
+Nothing on a schedule ever deletes from the bucket — neither the nightly Workflow nor the deploy Action touches an existing object. Archived copies are dropped only when an edit makes them disagree with what the page would now render, by `invalidateLogbookArchive` (the whole of one device's archive, for changes that rewrite every past day: timing points, logbook config, the device name, the display distance unit) or `invalidateLogbookArchiveDay` (one day, for a remark). If the bucket looks emptier than the number of days that have passed, that is where to look first — followed by any object lifecycle rule set on the bucket in the Cloudflare dashboard, which lives outside this repository.
+
 Setup that cannot be done from the repository:
 
 - Onboard the sender domain (`EMAIL_FROM` in `wrangler.jsonc`) in Cloudflare Email Sending. The zone must use Cloudflare DNS.
