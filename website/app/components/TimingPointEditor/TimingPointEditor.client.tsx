@@ -134,6 +134,16 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
     }, {} as Record<string, (typeof props.pins)[0]>)
   );
 
+  const lastEventPin =
+    props.pins.length > 0
+      ? props.pins.reduce((latest, pin) =>
+          pin.timestamp > latest.timestamp ? pin : latest
+        )
+      : null;
+  const mapCenter: [number, number] = lastEventPin
+    ? [lastEventPin.latitude, lastEventPin.longitude]
+    : [51.505, -0.09];
+
   if (!width || !height || width === 0 || height === 0)
     return null; // You can only render the map once, subsequent re-renders won't do anything - so we need to wait until we have the viewport size
   else
@@ -142,7 +152,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
         <div style={{ flexGrow: 1 }}>
           <MapContainer
             zoom={13}
-            center={[51.505, -0.09]}
+            center={mapCenter}
             scrollWheelZoom={false}
             style={{
               height: `100%`,
