@@ -1,5 +1,6 @@
 import { Button, Group } from "@mantine/core";
 import { Link } from "react-router";
+import { isTodayUtcDay } from "~/utils/dateTime";
 
 /**
  * `historic` has no button of its own — the comparison page is reached from the menu — but
@@ -31,6 +32,7 @@ const PAGES: Array<{ page: DatePage; label: string; path: string }> = [
 
 export function DatePageNav({ password, urlDate, current }: DatePageNavProps) {
   const basePath = `/${password}/${urlDate}`;
+  const isToday = isTodayUtcDay(urlDate);
 
   return (
     <Group gap="xs">
@@ -42,7 +44,7 @@ export function DatePageNav({ password, urlDate, current }: DatePageNavProps) {
           variant={current === page ? "filled" : "light"}
           size="compact-md"
         >
-          {label}
+          {page === "live" && !isToday ? "Map" : label}
         </Button>
       ))}
     </Group>

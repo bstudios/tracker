@@ -66,6 +66,13 @@ export const formatDateTimeWithSeconds = (rawTimestamp: number) =>
  */
 export const formatUtcDay = (dayString: string) => dayString;
 
+/** Today's UTC day bucket, in the same `YYYY-MM-DD` form as `events.date_string`. */
+export const todayUtcDay = () => DateTime.now().toUTC().toFormat("yyyy-MM-dd");
+
+/** Whether a `YYYY-MM-DD` UTC day bucket is today. */
+export const isTodayUtcDay = (dayString: string) =>
+  dayString === todayUtcDay();
+
 /**
  * A human duration between two stored timestamps, e.g. `2h 14m`, `47m`, `35s`.
  *

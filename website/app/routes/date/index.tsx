@@ -15,7 +15,7 @@ import {
 import { Link, type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { formatUtcDay } from "~/utils/dateTime";
+import { formatUtcDay, isTodayUtcDay } from "~/utils/dateTime";
 import type { Route } from "./+types/index";
 import {
   IconAntennaBars5,
@@ -56,6 +56,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 export default function Page({ loaderData }: Route.ComponentProps) {
   const theme = useMantineTheme();
+  const isToday = isTodayUtcDay(loaderData.urlDate);
   if (!loaderData.hasData) {
     return (
       <Container fluid p="md">
@@ -97,9 +98,11 @@ export default function Page({ loaderData }: Route.ComponentProps) {
           >
             <IconMap color={theme.colors.pink[6]} size={40} stroke={1.5} />
             <div>
-              <Text fw={600}>Live tracking map</Text>
+              <Text fw={600}>{isToday ? "Live tracking map" : "Map"}</Text>
               <Text size="xs" c="dimmed">
-                Follow along on the map
+                {isToday
+                  ? "Follow along on the map"
+                  : "See this day on the map"}
               </Text>
             </div>
           </UnstyledButton>
