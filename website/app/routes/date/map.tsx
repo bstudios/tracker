@@ -16,7 +16,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   const db = getDb(context);
 
-  const [[device], events, timingPoints] = await Promise.all([
+  const [[device], events, timingPoints] = await db.batch([
     db
       .select({ icon: Schema.Devices.icon })
       .from(Schema.Devices)

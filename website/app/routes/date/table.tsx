@@ -19,7 +19,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
 
   const db = getDb(context);
 
-  const [events, count] = await Promise.all([
+  const [events, count] = await db.batch([
     db
       .select({
         timestamp: Events.timestamp,
