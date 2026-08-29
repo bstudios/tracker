@@ -7,25 +7,27 @@ import { getH3IndexForLocation, toUtcDateString } from "~/utils/h3";
 
 export const loader = async ({}: Route.LoaderArgs) => redirect("/");
 
-const validator = zod.object({
-  location: zod.object({
-    coords: zod.object({
-      accuracy: zod.number(),
-      longitude: zod.number(),
-      altitude: zod.number(),
-      heading: zod.number(),
-      latitude: zod.number(),
-      altitudeAccuracy: zod.number(),
-      speed: zod.number(),
+const validator = zod.compile(
+  zod.object({
+    location: zod.object({
+      coords: zod.object({
+        accuracy: zod.number(),
+        longitude: zod.number(),
+        altitude: zod.number(),
+        heading: zod.number(),
+        latitude: zod.number(),
+        altitudeAccuracy: zod.number(),
+        speed: zod.number(),
+      }),
+      mocked: zod.boolean(),
+      timestamp: zod.number(),
     }),
-    mocked: zod.boolean(),
-    timestamp: zod.number(),
+    battery: zod.object({
+      percentage: zod.number(),
+      charging: zod.boolean(),
+    }),
   }),
-  battery: zod.object({
-    percentage: zod.number(),
-    charging: zod.boolean(),
-  }),
-});
+);
 
 export const action = async ({ context, request }: Route.ActionArgs) => {
   return data({}, 200);

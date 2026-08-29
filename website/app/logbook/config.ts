@@ -68,7 +68,7 @@ const voltageSourceSchema = z.object({
   bands: z.array(voltageBandSchema).min(1).max(10),
 });
 
-export const logbookConfigSchema = z.object({
+export const logbookConfigSchema = z.compile(z.object({
   stationary: z
     .object({
       /** A run of fixes staying within this distance of its first fix counts as stopped. */
@@ -138,7 +138,7 @@ export const logbookConfigSchema = z.object({
     .default({
       noiseFloorMeters: LOGBOOK_DEFAULT_DISTANCE_NOISE_FLOOR_METERS,
     }),
-});
+}));
 
 export type LogbookConfig = z.infer<typeof logbookConfigSchema>;
 export type LogbookVoltageSource = LogbookConfig["voltage"]["sources"][number];

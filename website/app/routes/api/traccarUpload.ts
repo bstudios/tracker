@@ -5,8 +5,8 @@ import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/traccarUpload";
 import { getH3IndexForLocation, toUtcDateString } from "~/utils/h3";
 
-export const loader = async ({ context, request }: Route.LoaderArgs) => {
-  const getRequestParameters = zod.object({
+const getRequestParameters = zod.compile(
+  zod.object({
     name: zod.string().optional(),
     uniqueId: zod.string().optional(),
     status: zod.string().optional(),
@@ -25,7 +25,42 @@ export const loader = async ({ context, request }: Route.LoaderArgs) => {
     address: zod.string().optional(),
     attributes: zod.string().optional(),
     gprmc: zod.string().optional(),
-  });
+  }),
+);
+
+const postPayloadSchema = zod.compile(
+  zod.object({
+    event: zod.object({
+      id: zod.coerce.number(),
+      attributes: zod.object({}).optional(),
+      deviceId: zod.coerce.number(),
+      type: zod.string(),
+      eventTime: zod.string(),
+      positionId: zod.coerce.number(),
+      geofenceId: zod.coerce.number(),
+      maintenanceId: zod.coerce.number(),
+    }),
+    device: zod.object({
+      id: zod.coerce.number(),
+      attributes: zod.object({}).optional(),
+      groupId: zod.coerce.number(),
+      calendarId: zod.coerce.number(),
+      name: zod.string(),
+      uniqueId: zod.string(),
+      status: zod.string(),
+      lastUpdate: zod.string(),
+      positionId: zod.coerce.number(),
+      phone: zod.string().optional(),
+      model: zod.string().optional(),
+      contact: zod.string().optional(),
+      category: zod.string().optional(),
+      disabled: zod.string(),
+      expirationTime: zod.string().optional(),
+    }),
+  }),
+);
+
+export const loader = async ({ context, request }: Route.LoaderArgs) => {
   // Get parameters from the request
   const url = new URL(request.url);
   console.log(
@@ -77,35 +112,6 @@ export const loader = async ({ context, request }: Route.LoaderArgs) => {
 
 export const action = async ({ context, request }: Route.ActionArgs) => {
   if (request.method === "POST") {
-    const postPayloadSchema = zod.object({
-      event: zod.object({
-        id: zod.coerce.number(),
-        attributes: zod.object({}).optional(),
-        deviceId: zod.coerce.number(),
-        type: zod.string(),
-        eventTime: zod.string(),
-        positionId: zod.coerce.number(),
-        geofenceId: zod.coerce.number(),
-        maintenanceId: zod.coerce.number(),
-      }),
-      device: zod.object({
-        id: zod.coerce.number(),
-        attributes: zod.object({}).optional(),
-        groupId: zod.coerce.number(),
-        calendarId: zod.coerce.number(),
-        name: zod.string(),
-        uniqueId: zod.string(),
-        status: zod.string(),
-        lastUpdate: zod.string(),
-        positionId: zod.coerce.number(),
-        phone: zod.string().optional(),
-        model: zod.string().optional(),
-        contact: zod.string().optional(),
-        category: zod.string().optional(),
-        disabled: zod.string(),
-        expirationTime: zod.string().optional(),
-      }),
-    });
     let payload: unknown;
     try {
       payload = await request.json();
