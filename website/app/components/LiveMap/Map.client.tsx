@@ -35,7 +35,7 @@ import {
 import { DivIcon, divIcon, LatLng } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { DateTime } from "luxon";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   AttributionControl,
@@ -223,10 +223,23 @@ export const Map = (props: MapProps) => {
   const revalidator = useRevalidator();
   const config = mapPerformanceConfig.live;
 
+  // `useRevalidator()` returns a new object every time `revalidator.state` flips between
+  // "idle" and "loading", so depending on it directly would tear down and recreate this
+  // interval on every poll (and every poll that failed under a flaky connection, doubly
+  // so). A ref keeps the effect itself mount-for-mount stable, and reading `state` off it
+  // at fire time skips a poll while the previous one is still in flight, so a slow or
+  // failing network can't pile up overlapping revalidations.
+  const revalidatorRef = useRef(revalidator);
+  revalidatorRef.current = revalidator;
+
   useEffect(() => {
-    const intervalId = setInterval(() => revalidator.revalidate(), 60 * 1000); // Refresh the page for new data every minute
+    const intervalId = setInterval(() => {
+      if (revalidatorRef.current.state === "idle") {
+        revalidatorRef.current.revalidate();
+      }
+    }, 60 * 1000); // Refresh the page for new data every minute
     return () => clearInterval(intervalId);
-  }, [revalidator]);
+  }, []);
 
   const { width, height } = useViewportSize();
 
