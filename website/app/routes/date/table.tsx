@@ -17,29 +17,32 @@ export async function loader({ context, params }: Route.LoaderArgs) {
   const cursor = params.cursor;
   const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
 
-  const events = await getDb(context)
-    .select({
-      timestamp: Events.timestamp,
-      latitude: Events.latitude,
-      longitude: Events.longitude,
-      data: Events.data,
-      id: Events.id,
-    })
-    .from(Events)
-    .orderBy(desc(Events.id))
-    .where(
-      and(
-        eq(Events.deviceId, deviceId),
-        eq(Events.dateString, urlDate),
-        cursor ? lt(Events.id, parseInt(cursor)) : undefined,
-      ),
-    )
-    .limit(pageLength);
+  const db = getDb(context);
 
-  const count = await getDb(context)
-    .select({ count: sql<number>`count(*)` })
-    .from(Events)
-    .where(and(eq(Events.deviceId, deviceId), eq(Events.dateString, urlDate)));
+  const [events, count] = await Promise.all([
+    db
+      .select({
+        timestamp: Events.timestamp,
+        latitude: Events.latitude,
+        longitude: Events.longitude,
+        data: Events.data,
+        id: Events.id,
+      })
+      .from(Events)
+      .orderBy(desc(Events.id))
+      .where(
+        and(
+          eq(Events.deviceId, deviceId),
+          eq(Events.dateString, urlDate),
+          cursor ? lt(Events.id, parseInt(cursor)) : undefined,
+        ),
+      )
+      .limit(pageLength),
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(Events)
+      .where(and(eq(Events.deviceId, deviceId), eq(Events.dateString, urlDate))),
+  ]);
 
   return {
     events,
