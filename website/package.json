@@ -7,7 +7,6 @@
     "dev": "react-router dev",
     "build": "react-router build",
     "start": "npm run build && vite preview",
-    "test": "vitest run",
     "types:check": "wrangler types && react-router typegen && tsc -b",
     "types:generate": "wrangler types",
     "prettier": "prettier --write .",
@@ -55,7 +54,6 @@
     "typescript": "^5.7.2",
     "vite": "^7.1.0",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^4.1.11",
     "wrangler": "^4.105.0"
   }
 }
