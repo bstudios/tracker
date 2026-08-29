@@ -14,39 +14,42 @@ export const meta: MetaFunction = () => {
 export async function loader({ context }: Route.LoaderArgs) {
   const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
 
-  const [device] = await getDb(context)
-    .select({ icon: Schema.Devices.icon })
-    .from(Schema.Devices)
-    .where(eq(Schema.Devices.id, deviceId))
-    .limit(1);
+  const db = getDb(context);
 
-  const events = await getDb(context)
-    .select({
-      timestamp: Schema.Events.timestamp,
-      latitude: Schema.Events.latitude,
-      longitude: Schema.Events.longitude,
-    })
-    .from(Schema.Events)
-    .orderBy(desc(Schema.Events.timestamp))
-    .where(
-      and(
-        eq(Schema.Events.deviceId, deviceId),
-        eq(Schema.Events.dateString, urlDate),
+  const [[device], events, timingPoints] = await db.batch([
+    db
+      .select({ icon: Schema.Devices.icon })
+      .from(Schema.Devices)
+      .where(eq(Schema.Devices.id, deviceId))
+      .limit(1),
+    db
+      .select({
+        timestamp: Schema.Events.timestamp,
+        latitude: Schema.Events.latitude,
+        longitude: Schema.Events.longitude,
+      })
+      .from(Schema.Events)
+      .orderBy(desc(Schema.Events.timestamp))
+      .where(
+        and(
+          eq(Schema.Events.deviceId, deviceId),
+          eq(Schema.Events.dateString, urlDate),
+        ),
       ),
-    );
-
-  const timingPoints = await getDb(context)
-    .select({
-      name: Schema.TimingPoints.name,
-      latitude: Schema.TimingPoints.latitude,
-      longitude: Schema.TimingPoints.longitude,
-      group: Schema.TimingPoints.group,
-      icon: Schema.TimingPoints.icon,
-      googleLink: Schema.TimingPoints.googleLink,
-    })
-    .from(Schema.TimingPoints)
-    .where(eq(Schema.TimingPoints.deviceId, deviceId)); // Selects only the timing points belonging to this device
-  // No point having an order by given that it's a map
+    // Selects only the timing points belonging to this device.
+    // No point having an order by given that it's a map
+    db
+      .select({
+        name: Schema.TimingPoints.name,
+        latitude: Schema.TimingPoints.latitude,
+        longitude: Schema.TimingPoints.longitude,
+        group: Schema.TimingPoints.group,
+        icon: Schema.TimingPoints.icon,
+        googleLink: Schema.TimingPoints.googleLink,
+      })
+      .from(Schema.TimingPoints)
+      .where(eq(Schema.TimingPoints.deviceId, deviceId)),
+  ]);
 
   return {
     events,

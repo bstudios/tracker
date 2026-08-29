@@ -11,7 +11,7 @@ import {
   Title,
 } from "@mantine/core";
 import { AreaChart } from "@mantine/charts";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { memo, useEffect, useState } from "react";
 import { Link, type MetaFunction } from "react-router";
 import { AnalysisMap } from "~/components/AnalysisMap/AnalysisMap";
@@ -20,6 +20,10 @@ import {
   getSpeedRange,
 } from "~/components/AnalysisMap/speedColor";
 import * as Schema from "~/database/schema.d";
+import {
+  buildSpeedSegments,
+  computeSpeedThresholds,
+} from "~/utils/analysisSpeed";
 import {
   displayDateTime,
   formatDateTimeWithSeconds,
@@ -180,7 +184,14 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   const db = getDb(context);
 
-  const points = db.$with("points").as(
+  // The day's points are read once and every derived figure is computed from them in JS.
+  // This used to be a `points` → `points_with_previous` (a `LAG(...)` window) → `segments`
+  // → `ranked_segments` (`NTILE(100)`) CTE chain that ran three times per request — a raw
+  // points query, a segments query and a summary query whose two correlated subqueries
+  // re-derived the whole chain again. On a ~10k-point day that read ~300k rows out of D1
+  // per page view, all of it re-deriving the same per-point arithmetic, and that SQLite
+  // work competes with the concurrent GPS upload writes on the same database.
+  const [pointRows, deviceRows] = await db.batch([
     db
       .select({
         id: Schema.Events.id,
@@ -196,170 +207,7 @@ export async function loader({ context }: Route.LoaderArgs) {
           eq(Schema.Events.dateString, urlDate),
         ),
       )
-      .orderBy(asc(Schema.Events.timestamp)),
-  );
-
-  const pointsWithPrevious = db.$with("points_with_previous").as(
-    db
-      .select({
-        id: points.id,
-        timestamp: points.timestamp,
-        latitude: points.latitude,
-        longitude: points.longitude,
-        previousPointId: sql<
-          number | null
-        >`LAG(${points.id}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
-          "previous_point_id",
-        ),
-        previousTimestamp: sql<
-          number | null
-        >`LAG(${points.timestamp}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
-          "previous_timestamp",
-        ),
-        previousLatitude: sql<
-          number | null
-        >`LAG(${points.latitude}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
-          "previous_latitude",
-        ),
-        previousLongitude: sql<
-          number | null
-        >`LAG(${points.longitude}) OVER (ORDER BY ${points.timestamp}, ${points.id})`.as(
-          "previous_longitude",
-        ),
-      })
-      .from(points),
-  );
-
-  const distanceMetersExpression = sql<number>`
-    CASE
-      WHEN ${pointsWithPrevious.previousLatitude} IS NULL OR ${pointsWithPrevious.previousLongitude} IS NULL THEN 0
-      ELSE SQRT(
-        ((CAST(${pointsWithPrevious.latitude} AS REAL) - CAST(${pointsWithPrevious.previousLatitude} AS REAL)) * 111320.0) *
-        ((CAST(${pointsWithPrevious.latitude} AS REAL) - CAST(${pointsWithPrevious.previousLatitude} AS REAL)) * 111320.0) +
-        ((CAST(${pointsWithPrevious.longitude} AS REAL) - CAST(${pointsWithPrevious.previousLongitude} AS REAL)) *
-          (111320.0 * COS(((CAST(${pointsWithPrevious.latitude} AS REAL) + CAST(${pointsWithPrevious.previousLatitude} AS REAL)) / 2.0) * 0.01745329252))) *
-        ((CAST(${pointsWithPrevious.longitude} AS REAL) - CAST(${pointsWithPrevious.previousLongitude} AS REAL)) *
-          (111320.0 * COS(((CAST(${pointsWithPrevious.latitude} AS REAL) + CAST(${pointsWithPrevious.previousLatitude} AS REAL)) / 2.0) * 0.01745329252)))
-      )
-    END
-  `;
-
-  const timeDeltaSecondsExpression = sql<number>`
-      CASE
-        WHEN ${pointsWithPrevious.previousTimestamp} IS NULL THEN 0
-        WHEN ABS(${pointsWithPrevious.timestamp}) >= 1000000000000000 THEN (${pointsWithPrevious.timestamp} - ${pointsWithPrevious.previousTimestamp}) / 1000000.0
-        WHEN ABS(${pointsWithPrevious.timestamp}) >= 1000000000000 THEN (${pointsWithPrevious.timestamp} - ${pointsWithPrevious.previousTimestamp}) / 1000.0
-        ELSE (${pointsWithPrevious.timestamp} - ${pointsWithPrevious.previousTimestamp}) * 1.0
-      END
-    `;
-
-  const speedMpsExpression = sql<number>`
-    CASE
-      WHEN ${timeDeltaSecondsExpression} > 0 THEN COALESCE(${distanceMetersExpression}, 0) / ${timeDeltaSecondsExpression}
-      ELSE 0
-    END
-  `;
-
-  // Position-derived speed, purely from consecutive GPS fixes. Used as a fallback wherever
-  // the device itself doesn't report a usable speed, and to figure out which of *those*
-  // fallback segments are GPS-jitter outliers (see outlierThresholdMph below). Deliberately
-  // still expressed in mph here rather than the device's display unit — it's an internal
-  // filtering signal, never shown to the user.
-  const segments = db.$with("segments").as(
-    db
-      .select({
-        id: sql<string>`${pointsWithPrevious.previousPointId} || '-' || ${pointsWithPrevious.id}`.as(
-          "id",
-        ),
-        pointId: pointsWithPrevious.id,
-        timestamp: pointsWithPrevious.timestamp,
-        previousLatitude: pointsWithPrevious.previousLatitude,
-        previousLongitude: pointsWithPrevious.previousLongitude,
-        latitude: pointsWithPrevious.latitude,
-        longitude: pointsWithPrevious.longitude,
-        timeDeltaSeconds: timeDeltaSecondsExpression.as("time_delta_seconds"),
-        distanceMeters: distanceMetersExpression.as("distance_meters"),
-        speedMps: speedMpsExpression.as("speed_mps"),
-        speedMph: sql<number>`${speedMpsExpression} * 2.2369362921`.as(
-          "speed_mph",
-        ),
-      })
-      .from(pointsWithPrevious)
-      .where(sql`${pointsWithPrevious.previousPointId} IS NOT NULL`),
-  );
-
-  const rankedSegments = db.$with("ranked_segments").as(
-    db
-      .select({
-        speedMph: segments.speedMph,
-        speedMps: segments.speedMps,
-        distanceMeters: segments.distanceMeters,
-        timeDeltaSeconds: segments.timeDeltaSeconds,
-        speedPercentileBucket:
-          sql<number>`NTILE(100) OVER (ORDER BY ${segments.speedMps})`.as(
-            "speed_percentile_bucket",
-          ),
-      })
-      .from(segments)
-      .where(sql`${segments.speedMps} >= 0`),
-  );
-
-  const [pointRows, segmentRows, summaryRow, deviceRows] = await Promise.all([
-    db
-      .with(points)
-      .select({
-        id: points.id,
-        timestamp: points.timestamp,
-        latitude: points.latitude,
-        longitude: points.longitude,
-        data: points.data,
-      })
-      .from(points)
-      .orderBy(asc(points.timestamp)),
-    db
-      .with(points, pointsWithPrevious, segments)
-      .select({
-        id: segments.id,
-        pointId: segments.pointId,
-        timestamp: segments.timestamp,
-        timeDeltaSeconds: segments.timeDeltaSeconds,
-        distanceMeters: segments.distanceMeters,
-        speedMps: segments.speedMps,
-        speedMph: segments.speedMph,
-        previousLatitude: segments.previousLatitude,
-        previousLongitude: segments.previousLongitude,
-        latitude: segments.latitude,
-        longitude: segments.longitude,
-      })
-      .from(segments)
-      .orderBy(asc(segments.timestamp)),
-    db
-      .with(points, pointsWithPrevious, segments, rankedSegments)
-      .select({
-        points: sql<number>`(SELECT COUNT(*) FROM points)`.as("points"),
-        outlierThresholdMph: sql<number>`
-          MIN(
-            120.0,
-            MAX(
-              25.0,
-              COALESCE(
-                (SELECT MAX(speed_mph) FROM ranked_segments WHERE speed_percentile_bucket <= 95),
-                (SELECT MAX(speed_mph) FROM ranked_segments),
-                0
-              ) * 1.6
-            )
-          )
-        `.as("outlier_threshold_mph"),
-        chartSpeedCapMph: sql<number>`
-          COALESCE(
-            (SELECT MAX(speed_mph) FROM ranked_segments WHERE speed_percentile_bucket <= 99),
-            (SELECT MAX(speed_mph) FROM ranked_segments),
-            0
-          )
-        `.as("chart_speed_cap_mph"),
-      })
-      .from(points)
-      .limit(1),
+      .orderBy(asc(Schema.Events.timestamp), asc(Schema.Events.id)),
     db
       .select({
         inputSpeedUnit: Schema.Devices.inputSpeedUnit,
@@ -369,6 +217,22 @@ export async function loader({ context }: Route.LoaderArgs) {
       .where(eq(Schema.Devices.id, deviceId))
       .limit(1),
   ]);
+
+  // Position-derived speed, purely from consecutive GPS fixes. Used as a fallback wherever
+  // the device itself doesn't report a usable speed, and to figure out which of *those*
+  // fallback segments are GPS-jitter outliers (see outlierThresholdMph below). Deliberately
+  // still expressed in mph here rather than the device's display unit — it's an internal
+  // filtering signal, never shown to the user.
+  const segmentRows = buildSpeedSegments(
+    pointRows.map((point) => ({
+      id: Number(point.id),
+      timestamp: Number(point.timestamp),
+      latitude: Number(point.latitude),
+      longitude: Number(point.longitude),
+    })),
+  );
+
+  const speedThresholds = computeSpeedThresholds(segmentRows);
 
   const inputSpeedUnit: SpeedUnit | null = isSpeedUnit(
     deviceRows[0]?.inputSpeedUnit,
@@ -412,7 +276,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     speedMps: 0,
   }));
 
-  const outlierThresholdMph = Number(summaryRow[0]?.outlierThresholdMph ?? 120);
+  const outlierThresholdMph = speedThresholds.outlierThresholdMph;
 
   const pointIndexById = new Map<number, number>();
   pointsWithDerivedSpeed.forEach((point, index) => {
@@ -534,7 +398,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   );
 
   const chartSpeedCapMps = Math.min(
-    toMetersPerSecond(Number(summaryRow[0]?.chartSpeedCapMph ?? 0), "mph"),
+    toMetersPerSecond(speedThresholds.chartSpeedCapMph, "mph"),
     toMetersPerSecond(outlierThresholdMph, "mph"),
   );
 
@@ -555,7 +419,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     password,
     chartData,
     summary: {
-      points: summaryRow[0]?.points ?? 0,
+      points: pointRows.length,
       segments: routeSegments.length,
       averageSpeedDisplay: Number(
         fromMetersPerSecond(filteredAverageSpeedMps, displaySpeedUnit).toFixed(
@@ -606,7 +470,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
     loaderData.summary.averageSpeedDisplay,
   );
   const yAxisStep = getYAxisStep(chartYAxisMax);
-  const normalizedChartYAxisMax = Math.ceil(chartYAxisMax / yAxisStep) * yAxisStep;
+  const normalizedChartYAxisMax =
+    Math.ceil(chartYAxisMax / yAxisStep) * yAxisStep;
   const yAxisTicks = Array.from(
     { length: normalizedChartYAxisMax / yAxisStep + 1 },
     (_, index) => index * yAxisStep,
@@ -732,8 +597,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                 <Text c="dimmed" size="xs">
                   Min {speedRange.min.toFixed(1)}{" "}
                   {loaderData.summary.speedUnitLabel}, max{" "}
-                  {speedRange.max.toFixed(1)} {loaderData.summary.speedUnitLabel}
-                  .
+                  {speedRange.max.toFixed(1)}{" "}
+                  {loaderData.summary.speedUnitLabel}.
                 </Text>
               </>
             ) : (

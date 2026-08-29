@@ -111,7 +111,6 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               className={classes.item}
               component={Link}
               to={`/${loaderData.password}/${loaderData.urlDate}/logbook`}
-              prefetch="intent"
             >
               <IconNotebook
                 color={theme.colors.pink[6]}
@@ -126,7 +125,6 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               className={classes.item}
               component={Link}
               to={`/${loaderData.password}/${loaderData.urlDate}/timings`}
-              prefetch="intent"
             >
               <IconStopwatch
                 color={theme.colors.pink[6]}
@@ -141,7 +139,6 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               className={classes.item}
               component={Link}
               to={`/${loaderData.password}/${loaderData.urlDate}/analysis`}
-              prefetch="intent"
             >
               <IconDeviceAnalytics
                 color={theme.colors.pink[6]}
@@ -156,7 +153,6 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               className={classes.item}
               component={Link}
               to={`/${loaderData.password}/${loaderData.urlDate}/timingsHistoric`}
-              prefetch="intent"
             >
               <IconGitCompare
                 color={theme.colors.pink[6]}
@@ -171,7 +167,6 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               className={classes.item}
               component={Link}
               to={`/${loaderData.password}/${loaderData.urlDate}/signal`}
-              prefetch="intent"
             >
               <IconAntennaBars5
                 color={theme.colors.pink[6]}
