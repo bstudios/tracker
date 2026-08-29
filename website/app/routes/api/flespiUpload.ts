@@ -8,22 +8,24 @@ import { eq, inArray } from "drizzle-orm";
 import type { Route } from "./+types/flespiUpload";
 import { getH3IndexForLocation, toUtcDateString } from "~/utils/h3";
 
-const rawMessageSchema = zod.record(zod.string(), zod.unknown());
+const rawMessageSchema = zod.compile(zod.record(zod.string(), zod.unknown()));
 
-const normalizedMessageSchema = zod.object({
-  timestamp: zod.coerce.number().positive(),
-  latitude: zod.coerce.number().min(-90).max(90),
-  longitude: zod.coerce.number().min(-180).max(180),
-  altitude: zod.coerce.number().optional(),
-  speed: zod.coerce.number().min(0).optional(),
-  heading: zod.coerce.number().min(0).max(360).optional(),
-  accuracy: zod.coerce.number().min(0).optional(),
-  batteryPercentage: zod.coerce.number().min(0).max(100).optional(),
-  batteryCharging: zod.coerce.boolean().optional(),
-  batteryVoltage: zod.coerce.number().min(0).optional(),
-  identifier: zod.string().min(1),
-  deviceTypeId: zod.coerce.string().min(1).optional(),
-});
+const normalizedMessageSchema = zod.compile(
+  zod.object({
+    timestamp: zod.coerce.number().positive(),
+    latitude: zod.coerce.number().min(-90).max(90),
+    longitude: zod.coerce.number().min(-180).max(180),
+    altitude: zod.coerce.number().optional(),
+    speed: zod.coerce.number().min(0).optional(),
+    heading: zod.coerce.number().min(0).max(360).optional(),
+    accuracy: zod.coerce.number().min(0).optional(),
+    batteryPercentage: zod.coerce.number().min(0).max(100).optional(),
+    batteryCharging: zod.coerce.boolean().optional(),
+    batteryVoltage: zod.coerce.number().min(0).optional(),
+    identifier: zod.string().min(1),
+    deviceTypeId: zod.coerce.string().min(1).optional(),
+  }),
+);
 
 const INSERT_CHUNK_SIZE = 200;
 
