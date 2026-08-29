@@ -207,7 +207,7 @@ export async function loader({ context }: Route.LoaderArgs) {
           eq(Schema.Events.dateString, urlDate),
         ),
       )
-      .orderBy(asc(Schema.Events.timestamp)),
+      .orderBy(asc(Schema.Events.timestamp), asc(Schema.Events.id)),
     db
       .select({
         inputSpeedUnit: Schema.Devices.inputSpeedUnit,

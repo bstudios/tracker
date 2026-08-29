@@ -154,7 +154,7 @@ export const ntileRowsThroughBucket = (
   bucketCount: number,
   throughBucket: number,
 ) => {
-  if (rowCount <= 0 || throughBucket <= 0) return 0;
+  if (rowCount <= 0 || throughBucket <= 0 || bucketCount <= 0) return 0;
 
   const bucket = Math.min(throughBucket, bucketCount);
   const groupSize = Math.floor(rowCount / bucketCount);
