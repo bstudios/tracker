@@ -77,17 +77,30 @@
     "run_worker_first": false,
   },
   "upload_source_maps": true,
+  // `destinations` are the OpenTelemetry exporters configured on this account under
+  // Workers & Pages -> Observability -> Destinations. They are Cloudflare-side config, not
+  // repository config: the OTLP endpoint and the `x-sentry-auth` header live in the
+  // dashboard, and these names are all that ties a Worker to them. See the Readme for the
+  // endpoints and header to set if they ever need recreating.
+  //
+  // This export is separate from, and additional to, the Sentry SDK wired into
+  // `workers/app.ts`. The SDK reports what the application knows about — which route
+  // matched, which D1 query ran, which error was thrown — while this exports what the
+  // Workers runtime itself records about every invocation, including the ones that never
+  // reach application code. Both land in the same Sentry project.
   "observability": {
     "logs": {
       "enabled": true,
       "head_sampling_rate": 1,
       "persist": true,
       "invocation_logs": true,
+      "destinations": ["sentry-logs-project-tracker"],
     },
     "traces": {
       "enabled": true,
       "head_sampling_rate": 1,
       "persist": true,
+      "destinations": ["sentry-traces-project-tracker"],
     },
   },
   "preview_urls": false,
