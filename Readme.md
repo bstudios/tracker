@@ -48,6 +48,83 @@ PDF_SIGNING_SECRET=local-development-secret
 
 The `BROWSER` and `EMAIL` bindings are deliberately **not** marked `"remote": true`, because that would make every `npm run dev` require Cloudflare credentials. Neither has a working local simulator, so to exercise the workflow end to end run `npx wrangler dev --remote`.
 
+## Error monitoring, logs and traces
+
+Everything reports into one Sentry project, from two independent paths.
+
+**The Sentry SDK**, wired up in the application itself, reports what the application knows:
+which route matched, which D1 query ran, which loader threw. It covers three places —
+`workers/app.ts` wraps the `fetch` handler and the nightly Workflow class,
+`app/entry.server.tsx` names the request span after the matched route and captures server
+errors, and `app/entry.client.tsx` initialises the browser SDK. `app/utils/sentry.ts` holds
+the settings both halves share; `app/utils/sentry.server.ts` builds the worker's options.
+
+**The Cloudflare OpenTelemetry export**, configured under `observability` in
+`wrangler.jsonc`, reports what the Workers runtime itself records about every invocation —
+including ones that never reach application code. The `destinations` names there
+(`sentry-traces-project-tracker`, `sentry-logs-project-tracker`) refer to exporters
+configured in the Cloudflare dashboard, under **Workers & Pages → Observability →
+Destinations**. Those are account-level and live outside this repository; if they ever need
+recreating, the settings are:
+
+|               | Traces                                                                               | Logs                                                                               |
+| ------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Type          | Traces                                                                               | Logs                                                                               |
+| OTLP endpoint | `https://o83272.ingest.us.sentry.io/api/4512129566900224/integration/otlp/v1/traces` | `https://o83272.ingest.us.sentry.io/api/4512129566900224/integration/otlp/v1/logs` |
+| Custom header | `x-sentry-auth: sentry sentry_key=1683d0b8a14e80e1bd464fb23d62e450`                  | same                                                                               |
+
+Deleting a destination in the dashboard without removing its name from `wrangler.jsonc`
+will fail the deploy, and vice versa the name is the only thing tying the two together.
+
+### What is and is not sent
+
+The viewing password is the first path segment of nearly every URL on this site, so URLs
+reach Sentry carrying a working credential unless they are rewritten first.
+`redactSensitiveUrl` in `app/utils/sentry.ts` replaces that segment, and the `token` and
+`p` query parameters, everywhere a URL can appear on an event — the request URL, span and
+transaction names, span attributes, breadcrumbs, and the mechanism data React Router
+attaches to client errors. It only rewrites paths on this site's own hosts, so an
+OpenStreetMap tile URL keeps its meaning; `OWN_HOSTS` has to be kept in step with
+`PUBLIC_BASE_URL` if the domain ever changes.
+
+Cookies, request bodies and user identity are switched off in `dataCollection` on both
+sides — the admin session is a Cloudflare Access JWT, and the login form posts the viewing
+password. Session Replay is deliberately not enabled: the password is in the address bar of
+every page it would record.
+
+Logs are Sentry's structured logs (`enableLogs`). On the worker, `console.log`/`warn`/
+`error` are piped through as well, so the calls already scattered through the upload
+endpoints and the logbook Workflow show up in Sentry as well as the Workers dashboard. On
+the browser they are not, because the console there is mostly React's and Leaflet's.
+
+### Local development
+
+Sentry is off in development: `SENTRY_ENABLED` is `import.meta.env.PROD`, so `npm run dev`
+reports nothing and needs no configuration. There is nothing to put in `.dev.vars` — the
+DSN is a constant in `app/utils/sentry.ts` rather than a binding, because it is not a
+secret and the browser bundle needs it too.
+
+### Source maps
+
+`npm run build` produces no source maps unless `SENTRY_AUTH_TOKEN` is set, which keeps a
+local build identical to what it was before Sentry existed. When it is set, the build
+generates them, uploads them to Sentry, then deletes the browser half — `build/client/` is
+served verbatim as the site's static assets, so a `.map` left there would be a public copy
+of the source. The worker's maps are deliberately kept so that `wrangler deploy` can upload
+them to Cloudflare too (`upload_source_maps` in `wrangler.jsonc`), which un-minifies stack
+traces in the Workers dashboard as well.
+
+Stack traces resolve by debug id, which is stamped into each bundle and its map, so this
+works whether or not the release lines up. The release is the commit SHA, set by
+`SENTRY_RELEASE` in the deploy workflow and baked into both bundles so the running code
+reports the same string the maps were uploaded under. The Cloudflare version id — which
+names the deploy rather than the commit — is attached to every worker event as the
+`cloudflare_version` tag.
+
+The deploy needs three things set on the repository, and skips the upload without them:
+`SENTRY_AUTH_TOKEN` as an Actions secret, and `SENTRY_ORG` and `SENTRY_PROJECT` as Actions
+variables.
+
 ## Tracking Devices
 
 ### Expo App
