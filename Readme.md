@@ -78,19 +78,15 @@ will fail the deploy, and vice versa the name is the only thing tying the two to
 
 ### What is and is not sent
 
-The viewing password is the first path segment of nearly every URL on this site, so URLs
-reach Sentry carrying a working credential unless they are rewritten first.
-`redactSensitiveUrl` in `app/utils/sentry.ts` replaces that segment, and the `token` and
-`p` query parameters, everywhere a URL can appear on an event — the request URL, span and
-transaction names, span attributes, breadcrumbs, and the mechanism data React Router
-attaches to client errors. It only rewrites paths on this site's own hosts, so an
-OpenStreetMap tile URL keeps its meaning; `OWN_HOSTS` has to be kept in step with
-`PUBLIC_BASE_URL` if the domain ever changes.
+URLs are sent to Sentry as they are. The viewing password is the first path segment of
+nearly every URL here, so it reaches Sentry with them — on the request URL, on span and
+transaction names, and on breadcrumbs. That is a deliberate choice: it keeps traces
+readable and lets an error be traced back to the exact page someone was on. Treat access to
+the Sentry project as equivalent to holding every viewing password.
 
 Cookies, request bodies and user identity are switched off in `dataCollection` on both
 sides — the admin session is a Cloudflare Access JWT, and the login form posts the viewing
-password. Session Replay is deliberately not enabled: the password is in the address bar of
-every page it would record.
+password. Session Replay is not enabled.
 
 Logs are Sentry's structured logs (`enableLogs`). On the worker, `console.log`/`warn`/
 `error` are piped through as well, so the calls already scattered through the upload

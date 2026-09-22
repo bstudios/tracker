@@ -9,8 +9,6 @@ import { startTransition, StrictMode } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
 import {
-  redactSensitiveEventUrls,
-  redactSensitiveSpanUrls,
   SENTRY_DSN,
   SENTRY_ENABLED,
   SENTRY_RELEASE,
@@ -29,12 +27,8 @@ Sentry.init({
   // Leaflet has to say about a tile that did not load, none of which is worth a log line.
   enableLogs: true,
   // The login form posts the viewing password and the session cookie is what it buys, so
-  // neither is worth sending. Session Replay is left off for the same reason: the password
-  // is in the address bar of every page it would record.
+  // neither is worth sending. Session Replay is left off for the same reason.
   dataCollection: { cookies: false, httpBodies: [], userInfo: false },
-  beforeSend: redactSensitiveEventUrls,
-  beforeSendTransaction: redactSensitiveEventUrls,
-  beforeSendSpan: redactSensitiveSpanUrls,
 });
 
 startTransition(() => {

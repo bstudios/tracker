@@ -3,8 +3,6 @@ import {
   type CloudflareOptions,
 } from "@sentry/cloudflare";
 import {
-  redactSensitiveEventUrls,
-  redactSensitiveSpanUrls,
   SENTRY_DSN,
   SENTRY_ENABLED,
   SENTRY_RELEASE,
@@ -50,7 +48,4 @@ export const sentryOptions = (env: Env): CloudflareOptions => ({
     httpBodies: [],
     userInfo: false,
   },
-  beforeSend: redactSensitiveEventUrls,
-  beforeSendTransaction: redactSensitiveEventUrls,
-  beforeSendSpan: redactSensitiveSpanUrls,
 });
