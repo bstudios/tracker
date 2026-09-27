@@ -6,7 +6,7 @@ import type {
   HandleErrorFunction,
   RouterContextProvider,
 } from "react-router";
-import { ServerRouter } from "react-router";
+import { isRouteErrorResponse, ServerRouter } from "react-router";
 
 async function handleRequest(
   request: Request,
@@ -56,9 +56,15 @@ async function handleRequest(
  *
  * A client that navigates away mid-request aborts the signal, and every in-flight loader
  * throws as a result. Those are not faults, so they are dropped rather than reported.
+ *
+ * Neither are the error responses React Router raises itself for a bad request: a URL no
+ * route matches (scanners probing for `/wp-login.php` or `/vendor/composer/installed.json`),
+ * or a method a route has no action for. The visitor gets the 4xx page; the fault is theirs.
+ * Responses a loader throws deliberately never reach this function in the first place.
  */
 export const handleError: HandleErrorFunction = (error, { request }) => {
   if (request.signal.aborted) return;
+  if (isRouteErrorResponse(error) && error.status < 500) return;
   Sentry.captureException(error);
   console.error(error);
 };
