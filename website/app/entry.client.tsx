@@ -7,6 +7,7 @@
 import * as Sentry from "@sentry/react-router";
 import { startTransition, StrictMode } from "react";
 import { hydrateRoot } from "react-dom/client";
+import { isRouteErrorResponse } from "react-router";
 import { HydratedRouter } from "react-router/dom";
 import {
   SENTRY_DSN,
@@ -31,6 +32,22 @@ Sentry.init({
   dataCollection: { cookies: false, httpBodies: [], userInfo: false },
 });
 
+/**
+ * Forwards route errors to Sentry, except 4xx responses a loader or middleware threw on
+ * purpose — an expired Cloudflare Access session on `/admin` is a 401, which is the
+ * expected outcome rather than a bug, and the error boundary already shows it.
+ */
+const onError: typeof Sentry.sentryOnError = (error, errorInfo) => {
+  if (
+    isRouteErrorResponse(error) &&
+    error.status >= 400 &&
+    error.status < 500
+  ) {
+    return;
+  }
+  Sentry.sentryOnError(error, errorInfo);
+};
+
 startTransition(() => {
   hydrateRoot(
     document,
@@ -43,7 +60,7 @@ startTransition(() => {
           // component stack attached, so letting both capture would file each error twice.
           Sentry.createSentryClientInstrumentation({ captureErrors: false }),
         ]}
-        onError={Sentry.sentryOnError}
+        onError={onError}
       />
     </StrictMode>,
   );
