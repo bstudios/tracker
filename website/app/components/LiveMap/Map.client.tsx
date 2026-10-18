@@ -1,4 +1,5 @@
 import {
+  Badge,
   Button,
   Group,
   MantineProvider,
@@ -56,6 +57,7 @@ import {
   DISPLAY_TIME_ZONE,
   displayDateTime,
   formatDateTimeMed,
+  formatTime24,
   toMillisTimestamp,
 } from "~/utils/dateTime";
 import {
@@ -576,6 +578,31 @@ export const Map = (props: MapProps) => {
           rendered inside would pan the map as it was dragged. Sitting above the
           attribution strip rather than flush to the bottom so that stays readable.
         */}
+        {props.staleSince !== null ? (
+          // Below the control row rather than in it, so it can't push the buttons around,
+          // and outside MapContainer for the same pointer-event reason as the scrubber.
+          <div
+            style={{
+              position: "absolute",
+              top: 64,
+              left: 8,
+              right: 8,
+              zIndex: 1000,
+              display: "flex",
+              justifyContent: "center",
+              pointerEvents: "none",
+            }}
+          >
+            <Badge
+              color="orange"
+              size="lg"
+              maw="100%"
+              style={{ textTransform: "none" }}
+            >
+              Connection lost · last updated {formatTime24(props.staleSince)}
+            </Badge>
+          </div>
+        ) : null}
         {scrubberVisible ? (
           <div
             style={{

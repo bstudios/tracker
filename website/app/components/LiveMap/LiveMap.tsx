@@ -11,6 +11,8 @@ export interface MapProps {
   }[];
   urlDate: string;
   password: string;
+  // When the latest poll failed, the time the data being shown was fetched; otherwise null.
+  staleSince: number | null;
   timingPoints: {
     name: string;
     latitude: number;
