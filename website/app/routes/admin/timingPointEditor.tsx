@@ -45,6 +45,21 @@ const parseDeviceIdInput = async (
   return device.id;
 };
 
+const parseBadgesInput = (raw: FormDataEntryValue | null) =>
+  Array.from(
+    new Set(
+      ((raw as string | null) ?? "")
+        .split(",")
+        .map((badge) => badge.trim())
+        .filter((badge) => badge.length > 0),
+    ),
+  );
+
+const parseDescriptionInput = (raw: FormDataEntryValue | null) => {
+  const description = ((raw as string | null) ?? "").trim();
+  return description.length > 0 ? description : null;
+};
+
 export async function loader({ context, params }: Route.LoaderArgs) {
   const db = getDb(context);
 
@@ -143,6 +158,8 @@ export async function action({ context, request }: Route.ActionArgs) {
     const name = formData.get("name") as string;
     const radius = parseInt(formData.get("radius") as string);
     const order = parseInt(formData.get("order") as string);
+    const badges = parseBadgesInput(formData.get("badges"));
+    const description = parseDescriptionInput(formData.get("description"));
     const deviceId = await parseDeviceIdInput(db, formData.get("deviceId"));
 
     const [existingTimingPoint] = await db
@@ -173,6 +190,8 @@ export async function action({ context, request }: Route.ActionArgs) {
         radius,
         order,
         deviceId,
+        badges,
+        description,
         h3Index: centerH3Index,
       })
       .where(eq(Schema.TimingPoints.id, id));

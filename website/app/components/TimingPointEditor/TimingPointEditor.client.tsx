@@ -6,7 +6,9 @@ import {
   Modal,
   NumberInput,
   Select,
+  TagsInput,
   Text,
+  Textarea,
   TextInput,
   ThemeIcon,
 } from "@mantine/core";
@@ -278,6 +280,19 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 label="Order"
                 name="order"
                 defaultValue={editingPoint.order}
+              />
+              <TagsInput
+                label="Badges"
+                description="Press Enter after each badge, e.g. Blue route"
+                name="badges"
+                defaultValue={editingPoint.badges}
+              />
+              <Textarea
+                label="Description"
+                name="description"
+                autosize
+                minRows={2}
+                defaultValue={editingPoint.description ?? ""}
               />
               <Select
                 label="Device"

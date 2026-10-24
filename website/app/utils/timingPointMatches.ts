@@ -76,6 +76,8 @@ export function buildTimingPointMatchCtes(
         order: Schema.TimingPoints.order,
         icon: Schema.TimingPoints.icon,
         googleLink: Schema.TimingPoints.googleLink,
+        badges: Schema.TimingPoints.badges,
+        description: Schema.TimingPoints.description,
         timing_point_latitude: sql<number>`${Schema.TimingPoints.latitude}`.as(
           "timing_point_latitude",
         ),

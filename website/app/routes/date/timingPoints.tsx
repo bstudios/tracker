@@ -3,6 +3,10 @@ import { Anchor, Container, Group, Table, Title } from "@mantine/core";
 import { IconCoffee, IconGasStation, IconTrain } from "@tabler/icons-react";
 import { asc, eq, sql } from "drizzle-orm";
 import { Link, type MetaFunction } from "react-router";
+import {
+  normaliseBadges,
+  TimingPointLabel,
+} from "~/components/TimingPointLabel";
 import { formatDurationBetween, formatTime24 } from "~/utils/dateTime";
 import {
   buildTimingPointMatchCtes,
@@ -52,6 +56,8 @@ export async function loader({ context }: Route.LoaderArgs) {
       order: selectedTimingPoints.order,
       icon: selectedTimingPoints.icon,
       googleLink: selectedTimingPoints.googleLink,
+      badges: selectedTimingPoints.badges,
+      description: selectedTimingPoints.description,
       latitude: selectedTimingPoints.timing_point_latitude,
       longitude: selectedTimingPoints.timing_point_longitude,
       events: sql<string>`coalesce(${aggregatedEvents.events}, '[]')`.as(
@@ -73,6 +79,8 @@ export async function loader({ context }: Route.LoaderArgs) {
       events: string;
       icon: string | null;
       googleLink: string | null;
+      badges: unknown;
+      description: string | null;
       latitude: number;
       longitude: number;
     }[],
@@ -101,26 +109,32 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               return (
                 <Table.Tr key={timingPoint.timing_point_id}>
                   <Table.Td>
-                    <Group justify="flex-start">
-                      {timingPoint.icon === "IconCoffee" ? (
-                        <IconCoffee />
-                      ) : timingPoint.icon === "IconGasStation" ? (
-                        <IconGasStation />
-                      ) : timingPoint.icon === "IconTrain" ? (
-                        <IconTrain />
-                      ) : null}
-                      <Anchor
-                        c="inherit"
-                        component={Link}
-                        to={
-                          timingPoint.googleLink ??
-                          `https://www.google.com/maps?q=${timingPoint.latitude},${timingPoint.longitude}`
-                        }
-                        target="_blank"
-                      >
-                        {timingPoint.name}
-                      </Anchor>
-                    </Group>
+                    <TimingPointLabel
+                      badges={normaliseBadges(timingPoint.badges)}
+                      description={timingPoint.description}
+                      name={
+                        <Group justify="flex-start">
+                          {timingPoint.icon === "IconCoffee" ? (
+                            <IconCoffee />
+                          ) : timingPoint.icon === "IconGasStation" ? (
+                            <IconGasStation />
+                          ) : timingPoint.icon === "IconTrain" ? (
+                            <IconTrain />
+                          ) : null}
+                          <Anchor
+                            c="inherit"
+                            component={Link}
+                            to={
+                              timingPoint.googleLink ??
+                              `https://www.google.com/maps?q=${timingPoint.latitude},${timingPoint.longitude}`
+                            }
+                            target="_blank"
+                          >
+                            {timingPoint.name}
+                          </Anchor>
+                        </Group>
+                      }
+                    />
                   </Table.Td>
                   {events.length === 0 && <Table.Td colSpan={2}></Table.Td>}
                   {events.length === 1 && events[0].type === "passage" && (

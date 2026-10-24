@@ -2,6 +2,10 @@ import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Container, Table, Title } from "@mantine/core";
 import { asc, sql } from "drizzle-orm";
 import { type MetaFunction } from "react-router";
+import {
+  normaliseBadges,
+  TimingPointLabel,
+} from "~/components/TimingPointLabel";
 import { formatTime24 } from "~/utils/dateTime";
 import {
   buildTimingPointMatchCtes,
@@ -59,6 +63,8 @@ export async function loader({ context }: Route.LoaderArgs) {
       id: selectedTimingPoints.id,
       name: selectedTimingPoints.name,
       order: selectedTimingPoints.order,
+      badges: selectedTimingPoints.badges,
+      description: selectedTimingPoints.description,
     })
     .from(selectedTimingPoints)
     .orderBy(asc(selectedTimingPoints.order));
@@ -78,6 +84,8 @@ export async function loader({ context }: Route.LoaderArgs) {
     {
       name: string;
       order: number;
+      badges: string[];
+      description: string | null;
       byDate: Record<string, TimingPointEvent[]>;
     }
   > = {};
@@ -94,6 +102,8 @@ export async function loader({ context }: Route.LoaderArgs) {
       grouped[row.timing_point_id] = {
         name: row.name,
         order: row.order,
+        badges: [],
+        description: null,
         byDate: {},
       };
     }
@@ -101,14 +111,25 @@ export async function loader({ context }: Route.LoaderArgs) {
   }
 
   // Ensure timing points with no events are included
+  // and carry every timing point's badges and description.
   for (const tp of deviceTimingPoints as {
     id: number;
     name: string;
     order: number;
+    badges: unknown;
+    description: string | null;
   }[]) {
     if (!grouped[tp.id]) {
-      grouped[tp.id] = { name: tp.name, order: tp.order, byDate: {} };
+      grouped[tp.id] = {
+        name: tp.name,
+        order: tp.order,
+        badges: [],
+        description: null,
+        byDate: {},
+      };
     }
+    grouped[tp.id].badges = normaliseBadges(tp.badges);
+    grouped[tp.id].description = tp.description;
   }
 
   const rows = Object.entries(grouped)
@@ -117,6 +138,8 @@ export async function loader({ context }: Route.LoaderArgs) {
       timing_point_id: Number(tpId),
       name: info.name,
       order: info.order,
+      badges: info.badges,
+      description: info.description,
       byDate: info.byDate,
     }));
 
@@ -126,6 +149,8 @@ export async function loader({ context }: Route.LoaderArgs) {
       timing_point_id: number;
       name: string;
       order: number;
+      badges: string[];
+      description: string | null;
       byDate: Record<
         string,
         {
@@ -161,6 +186,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               (row: {
                 timing_point_id: number;
                 name: string;
+                badges: string[];
+                description: string | null;
                 byDate: Record<
                   string,
                   {
@@ -171,7 +198,13 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                 >;
               }) => (
                 <Table.Tr key={row.timing_point_id}>
-                  <Table.Td>{row.name}</Table.Td>
+                  <Table.Td>
+                    <TimingPointLabel
+                      name={row.name}
+                      badges={row.badges}
+                      description={row.description}
+                    />
+                  </Table.Td>
                   {loaderData.dates.flatMap((d: string) => {
                     const events = row.byDate[d] || [];
                     if (events.length === 0)

@@ -28,6 +28,13 @@ export const TimingPoints = sqliteTable(
     icon: text("icon", { mode: "text" }).default(sql`NULL`),
     googleLink: text("google_link", { mode: "text" }).default(sql`NULL`),
     group: text("group", { mode: "text" }).default("Other Timing Points"),
+    // Short labels shown next to the name, e.g. "Blue route".
+    badges: text("badges", { mode: "json" })
+      .$type<string[]>()
+      .default(sql`'[]'`)
+      .notNull(),
+    // Free text shown beneath the name.
+    description: text("description", { mode: "text" }).default(sql`NULL`),
   },
   (table) => [index("timing_points_device_idx").on(table.deviceId)],
 );
