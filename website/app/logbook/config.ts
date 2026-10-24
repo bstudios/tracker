@@ -68,6 +68,36 @@ const voltageSourceSchema = z.object({
   bands: z.array(voltageBandSchema).min(1).max(10),
 });
 
+const batteryStatusSourceSchema = z
+  .object({
+    /** Shown on the tracking menu, e.g. "Tracker battery". */
+    label: z.string().min(1).max(60),
+    /**
+     * SQLite JSON path into `events.data` for the reading, e.g. `$.battery.percentage` or
+     * `$."other"."battery.voltage"`. The newest event of the day with a value here is used.
+     */
+    jsonPath: z.string().min(1).max(200),
+    /** Printed after the value, e.g. "%" or "V". */
+    unit: z.string().max(10).optional(),
+    /**
+     * The readings that count as empty and full, for the level gauge. Default to 0 and 100
+     * when the unit is "%"; with no range at all only the value is shown.
+     */
+    empty: z.number().optional(),
+    full: z.number().optional(),
+    /** Readings below this are highlighted as low. */
+    lowBelow: z.number().optional(),
+    /** Optional JSON path to a boolean (or 0/1) saying whether it is on charge. */
+    chargingJsonPath: z.string().min(1).max(200).optional(),
+  })
+  .refine(
+    (source) =>
+      source.empty === undefined ||
+      source.full === undefined ||
+      source.empty !== source.full,
+    "A battery source's empty and full readings must differ",
+  );
+
 export const logbookConfigSchema = z.compile(z.object({
   stationary: z
     .object({
@@ -122,6 +152,13 @@ export const logbookConfigSchema = z.compile(z.object({
   voltage: z
     .object({ sources: z.array(voltageSourceSchema).max(5).default([]) })
     .default({ sources: [] }),
+  /**
+   * Battery readings shown on the tracking menu. Left out, the tracker's own battery is
+   * shown (`DEFAULT_BATTERY_STATUS_SOURCES`); an empty list hides the card altogether.
+   */
+  batteryStatus: z
+    .object({ sources: z.array(batteryStatusSourceSchema).max(5) })
+    .optional(),
   distance: z
     .object({
       /**
@@ -143,6 +180,23 @@ export const logbookConfigSchema = z.compile(z.object({
 export type LogbookConfig = z.infer<typeof logbookConfigSchema>;
 export type LogbookVoltageSource = LogbookConfig["voltage"]["sources"][number];
 export type LogbookVoltageBand = LogbookVoltageSource["bands"][number];
+export type LogbookBatteryStatusSource = z.infer<
+  typeof batteryStatusSourceSchema
+>;
+
+/**
+ * What the tracking menu shows when `batteryStatus` has never been configured: the
+ * tracker's own battery, which every upload maps into the typed `data.battery` object.
+ */
+export const DEFAULT_BATTERY_STATUS_SOURCES: LogbookBatteryStatusSource[] = [
+  {
+    label: "Tracker battery",
+    jsonPath: "$.battery.percentage",
+    unit: "%",
+    lowBelow: 20,
+    chargingJsonPath: "$.battery.charging",
+  },
+];
 
 /**
  * Apply defaults to a stored config, treating `null`/`undefined` as "not configured".
@@ -180,6 +234,25 @@ export const LOGBOOK_CONFIG_EXAMPLE = JSON.stringify(
             { name: "On battery", min: 11.5, max: 13 },
             { name: "Charging", min: 13 },
           ],
+        },
+      ],
+    },
+    batteryStatus: {
+      sources: [
+        {
+          label: "Tracker battery",
+          jsonPath: "$.battery.percentage",
+          unit: "%",
+          lowBelow: 20,
+          chargingJsonPath: "$.battery.charging",
+        },
+        {
+          label: "Engine battery",
+          jsonPath: '$."other"."external.powersource.voltage"',
+          unit: "V",
+          empty: 11.5,
+          full: 12.8,
+          lowBelow: 12,
         },
       ],
     },

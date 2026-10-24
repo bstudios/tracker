@@ -4,3 +4,4 @@ export * from "./schema/TimingPointCells";
 export * from "./schema/AccessPasswords";
 export * from "./schema/Devices";
 export * from "./schema/LogbookRemarks";
+export * from "./schema/LogbookCrewChanges";

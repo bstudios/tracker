@@ -31,6 +31,7 @@ const KIND_LABELS: Record<LogbookEntryKind, string> = {
   "timing-point-passed": "Passed",
   voltage: "Power",
   remark: "Remark",
+  crew: "Crew",
 };
 
 const renderRows = (entries: LogbookEntry[], distanceUnit: DistanceUnit) =>
