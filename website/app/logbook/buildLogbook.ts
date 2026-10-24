@@ -44,7 +44,8 @@ export type LogbookEntryKind =
   | "timing-point-arrived"
   | "timing-point-departed"
   | "voltage"
-  | "remark";
+  | "remark"
+  | "crew";
 
 export type LogbookEntry = {
   /** Unix milliseconds. */
@@ -63,8 +64,8 @@ export type LogbookEntry = {
   /**
    * Total distance travelled since the start of the day, up to this entry's timestamp. See
    * `buildCumulativeDistanceLookup` for how GPS wander is kept out of this number. Optional
-   * only because entries spliced in by callers (currently just remarks) are plain object
-   * literals rather than something `buildLogbook` had a chance to stamp — every entry that
+   * only because entries spliced in by callers (currently remarks and crew changes) are
+   * plain object literals rather than something `buildLogbook` had a chance to stamp — every entry that
    * `buildLogbook` itself returns has it set.
    */
   cumulativeDistanceMeters?: number;
@@ -645,7 +646,7 @@ export function buildLogbook(args: {
  * when something else shares their timestamp.
  *
  * Exported so callers that splice in entries `buildLogbook` does not know about — currently
- * just free-text remarks, loaded from the database rather than derived from fixes — can
+ * remarks and crew changes, loaded from the database rather than derived from fixes — can
  * re-sort the combined list the same way.
  */
 export function sortLogbookEntries(entries: LogbookEntry[]): LogbookEntry[] {

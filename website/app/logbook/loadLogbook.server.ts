@@ -13,6 +13,7 @@ import {
 } from "./buildLogbook";
 import { parseLogbookConfig, type LogbookConfig } from "./config";
 import { loadVoltageRuns } from "./voltageRuns.server";
+import { formatCrew, loadCrewChangesForDay } from "./crew.server";
 import { isDistanceUnit, type DistanceUnit } from "~/utils/distanceUnits";
 
 const DEFAULT_DISPLAY_DISTANCE_UNIT: DistanceUnit = "km";
@@ -91,7 +92,14 @@ export async function loadLogbook(
   // Only the three columns the stationary pass actually needs. The `data` JSON is by far
   // the widest column and none of it is wanted here — voltage is handled separately, and
   // entirely in SQL.
-  const [rows, timingPointRows, timingPointCells, voltageRuns, remarks] = await Promise.all([
+  const [
+    rows,
+    timingPointRows,
+    timingPointCells,
+    voltageRuns,
+    remarks,
+    crewChanges,
+  ] = await Promise.all([
     db
       .select({
         timestamp: Schema.Events.timestamp,
@@ -145,6 +153,7 @@ export async function loadLogbook(
         ),
       )
       .orderBy(asc(Schema.LogbookRemarks.timestamp)),
+    loadCrewChangesForDay(db, { deviceId, dateString }),
   ]);
 
   const truncated = rows.length > MAX_EVENTS_PER_DAY;
@@ -189,9 +198,9 @@ export async function loadLogbook(
   // as of this moment" figure instead of being left without one.
   const distanceLookup = buildCumulativeDistanceLookup(events, config);
 
-  // Remarks are free text against a timestamp, not derived from fixes, so they are merged
-  // in here rather than inside `buildLogbook` — which stays pure and DB-free — and
-  // re-sorted the same way it sorts its own entries.
+  // Remarks and crew changes are entered against a timestamp, not derived from fixes, so
+  // they are merged in here rather than inside `buildLogbook` — which stays pure and
+  // DB-free — and re-sorted the same way it sorts its own entries.
   const remarkEntries: LogbookEntry[] = remarks.map((remark) => {
     const timestamp = toMillisTimestamp(remark.timestamp);
     return {
@@ -203,11 +212,24 @@ export async function loadLogbook(
     };
   });
 
+  const crewEntries: LogbookEntry[] = crewChanges.map((change) => {
+    const timestamp = toMillisTimestamp(change.timestamp);
+    return {
+      timestamp,
+      kind: "crew",
+      title: "Crew change",
+      detail: formatCrew(change.members),
+      cumulativeDistanceMeters: distanceLookup.at(timestamp),
+    };
+  });
+
+  const enteredByHand = [...remarkEntries, ...crewEntries];
+
   return {
     deviceName: device.name,
     entries:
-      remarkEntries.length > 0
-        ? sortLogbookEntries([...builtEntries, ...remarkEntries])
+      enteredByHand.length > 0
+        ? sortLogbookEntries([...builtEntries, ...enteredByHand])
         : builtEntries,
     config,
     eventCount: events.length,
