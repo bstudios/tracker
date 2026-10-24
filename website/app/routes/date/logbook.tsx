@@ -25,6 +25,7 @@ import {
   IconFileTypePdf,
   IconMessagePlus,
   IconRefresh,
+  IconUsers,
 } from "@tabler/icons-react";
 import { eq } from "drizzle-orm";
 import { DateTime } from "luxon";
@@ -37,6 +38,12 @@ import {
   type MetaFunction,
 } from "react-router";
 import * as Schema from "~/database/schema.d";
+import { CrewChangeModal } from "~/components/CrewChangeModal";
+import {
+  loadCrewFormDefaults,
+  saveCrewChange,
+  type CrewMember,
+} from "~/logbook/crew.server";
 import type { LogbookEntry, LogbookEntryKind } from "~/logbook/buildLogbook";
 import {
   findAdjacentDaysWithData,
@@ -63,13 +70,14 @@ export async function loader({ context }: Route.LoaderArgs) {
   const { urlDate, password, deviceId, allowedDates } =
     getPasswordRouteAccess(context);
 
-  const [logbook, adjacent] = await Promise.all([
+  const [logbook, adjacent, crewForm] = await Promise.all([
     loadLogbook(db, { deviceId, dateString: urlDate }),
     findAdjacentDaysWithData(db, {
       deviceId,
       dateString: urlDate,
       allowedDates,
     }),
+    loadCrewFormDefaults(db, { deviceId, dateString: urlDate }),
   ]);
 
   return {
@@ -84,8 +92,15 @@ export async function loader({ context }: Route.LoaderArgs) {
     // Today's log is still growing, so there is nothing settled to download yet.
     canDownloadPdf: isDayComplete(urlDate) && (logbook?.eventCount ?? 0) > 0,
     ...adjacent,
+    crewForm,
   };
 }
+
+/** `HH:mm` on the logbook's day, in the display time zone, as Unix milliseconds. */
+const parseTimeOnDay = (urlDate: string, time: string) =>
+  DateTime.fromFormat(`${urlDate} ${time}`, "yyyy-MM-dd HH:mm", {
+    zone: DISPLAY_TIME_ZONE,
+  });
 
 export async function action({ context, request }: Route.ActionArgs) {
   const db = getDb(context);
@@ -103,11 +118,7 @@ export async function action({ context, request }: Route.ActionArgs) {
       return data({ error: "Write something to remark on" }, { status: 400 });
     }
 
-    const parsedTime = DateTime.fromFormat(
-      `${urlDate} ${time}`,
-      "yyyy-MM-dd HH:mm",
-      { zone: DISPLAY_TIME_ZONE },
-    );
+    const parsedTime = parseTimeOnDay(urlDate, time);
     if (!parsedTime.isValid) {
       return data({ error: "That time is not valid" }, { status: 400 });
     }
@@ -124,6 +135,45 @@ export async function action({ context, request }: Route.ActionArgs) {
     // a remark added afterwards would otherwise never appear in a downloaded copy until
     // someone happens to hit "Regenerate PDF". Only this day's copy, though: the remark is
     // filed against `urlDate` and cannot show up in any other day's log.
+    await invalidateLogbookArchiveDay(
+      getCloudflareContext(context).env,
+      deviceId,
+      urlDate,
+    );
+
+    return { error: null };
+  }
+
+  if (intent === "set-crew") {
+    const time = ((formData.get("time") as string | null) ?? "").trim();
+    const names = formData.getAll("crewName");
+    const roles = formData.getAll("crewRole");
+
+    // Rows left blank are dropped rather than rejected — it's easy to add one too many.
+    const members: CrewMember[] = names
+      .map((name, index) => ({
+        name: String(name).trim(),
+        role: String(roles[index] ?? "").trim(),
+      }))
+      .filter((member) => member.name.length > 0);
+
+    if (members.length === 0) {
+      return data({ error: "List at least one person" }, { status: 400 });
+    }
+
+    const parsedTime = parseTimeOnDay(urlDate, time);
+    if (!parsedTime.isValid) {
+      return data({ error: "That time is not valid" }, { status: 400 });
+    }
+
+    await saveCrewChange(db, {
+      deviceId,
+      dateString: urlDate,
+      timestamp: parsedTime.toMillis(),
+      members,
+    });
+
+    // Same reasoning as a remark: filed against `urlDate`, so only that day's PDF changes.
     await invalidateLogbookArchiveDay(
       getCloudflareContext(context).env,
       deviceId,
@@ -198,6 +248,7 @@ const KIND_STYLES: Record<LogbookEntryKind, { label: string; color: string }> =
     "timing-point-passed": { label: "Passed", color: "grape" },
     voltage: { label: "Power", color: "orange" },
     remark: { label: "Remark", color: "yellow" },
+    crew: { label: "Crew", color: "indigo" },
   };
 
 export default function Page({ loaderData, actionData }: Route.ComponentProps) {
@@ -213,11 +264,13 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
     truncated,
     displayDistanceUnit,
     totalDistanceMeters,
+    crewForm,
   } = loaderData;
 
   const [namingEntry, setNamingEntry] = useState<LogbookEntry | null>(null);
   const [modalOpened, modal] = useDisclosure(false);
   const [remarkModalOpened, remarkModal] = useDisclosure(false);
+  const [crewModalOpened, crewModal] = useDisclosure(false);
   const navigation = useNavigation();
 
   const openNamingModal = (entry: LogbookEntry) => {
@@ -304,14 +357,24 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
               travelled. Times are local.
             </Text>
           </div>
-          <Button
-            variant="light"
-            size="compact-md"
-            leftSection={<IconMessagePlus size={16} />}
-            onClick={remarkModal.open}
-          >
-            Add remark
-          </Button>
+          <Group gap="xs">
+            <Button
+              variant="light"
+              size="compact-md"
+              leftSection={<IconUsers size={16} />}
+              onClick={crewModal.open}
+            >
+              Crew change
+            </Button>
+            <Button
+              variant="light"
+              size="compact-md"
+              leftSection={<IconMessagePlus size={16} />}
+              onClick={remarkModal.open}
+            >
+              Add remark
+            </Button>
+          </Group>
         </Group>
 
         {dayNav}
@@ -491,6 +554,13 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
           </Stack>
         </Form>
       </Modal>
+
+      <CrewChangeModal
+        opened={crewModalOpened}
+        onClose={crewModal.close}
+        submitting={navigation.state === "submitting"}
+        {...crewForm}
+      />
     </Container>
   );
 }
