@@ -1,5 +1,5 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { Container, Table, Title } from "@mantine/core";
+import { Container, Table, Text, Title } from "@mantine/core";
 import { asc, sql } from "drizzle-orm";
 import { type MetaFunction } from "react-router";
 import {
@@ -184,10 +184,9 @@ export default function Page({ loaderData }: Route.ComponentProps) {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Location</Table.Th>
-              {loaderData.dates.flatMap((d: string) => [
-                <Table.Th key={`${d}-arr`}>{d} Arrived</Table.Th>,
-                <Table.Th key={`${d}-dep`}>{d} Departed</Table.Th>,
-              ])}
+              {loaderData.dates.map((d: string) => (
+                <Table.Th key={d}>{d}</Table.Th>
+              ))}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -209,26 +208,15 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                   <Table.Td>
                     {row.label ? <TimingPointLabel {...row.label} /> : row.name}
                   </Table.Td>
-                  {loaderData.dates.flatMap((d: string) => {
+                  {loaderData.dates.map((d: string) => {
                     const events = row.byDate[d] || [];
-                    if (events.length === 0)
-                      return [
-                        <Table.Td
-                          key={`${row.timing_point_id}-${d}-a`}
-                        ></Table.Td>,
-                        <Table.Td
-                          key={`${row.timing_point_id}-${d}-d`}
-                        ></Table.Td>,
-                      ];
+                    const cellKey = `${row.timing_point_id}-${d}`;
                     if (events.length === 1 && events[0].type === "passage") {
-                      return [
-                        <Table.Td key={`${row.timing_point_id}-${d}-a`}>
+                      return (
+                        <Table.Td key={cellKey}>
                           {formatTime24(events[0].timestamp)}
-                        </Table.Td>,
-                        <Table.Td
-                          key={`${row.timing_point_id}-${d}-d`}
-                        ></Table.Td>,
-                      ];
+                        </Table.Td>
+                      );
                     }
                     const arrivalEvent = events.find(
                       (e) => e.type === "arrival",
@@ -237,36 +225,22 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                       (e) => e.type === "departure",
                     );
                     if (!arrivalEvent || !departureEvent) {
-                      return [
-                        <Table.Td
-                          key={`${row.timing_point_id}-${d}-a`}
-                        ></Table.Td>,
-                        <Table.Td
-                          key={`${row.timing_point_id}-${d}-d`}
-                        ></Table.Td>,
-                      ];
+                      return <Table.Td key={cellKey}></Table.Td>;
                     }
-                    if (
-                      departureEvent.timestamp - arrivalEvent.timestamp <=
-                      1000 * 120
-                    ) {
-                      return [
-                        <Table.Td key={`${row.timing_point_id}-${d}-a`}>
-                          {formatTime24(arrivalEvent.timestamp)}
-                        </Table.Td>,
-                        <Table.Td
-                          key={`${row.timing_point_id}-${d}-d`}
-                        ></Table.Td>,
-                      ];
-                    }
-                    return [
-                      <Table.Td key={`${row.timing_point_id}-${d}-a`}>
+                    // Stops of two minutes or less are effectively a passage.
+                    const showDeparture =
+                      departureEvent.timestamp - arrivalEvent.timestamp >
+                      1000 * 120;
+                    return (
+                      <Table.Td key={cellKey}>
                         {formatTime24(arrivalEvent.timestamp)}
-                      </Table.Td>,
-                      <Table.Td key={`${row.timing_point_id}-${d}-d`}>
-                        {formatTime24(departureEvent.timestamp)}
-                      </Table.Td>,
-                    ];
+                        {showDeparture && (
+                          <Text span c="dimmed" ml={4}>
+                            (departed {formatTime24(departureEvent.timestamp)})
+                          </Text>
+                        )}
+                      </Table.Td>
+                    );
                   })}
                 </Table.Tr>
               ),
