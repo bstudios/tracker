@@ -11,14 +11,25 @@ import {
   useMantineTheme,
   Anchor,
   Group,
+  Progress,
 } from "@mantine/core";
 import { Link, type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { formatUtcDay, isTodayUtcDay } from "~/utils/dateTime";
+import { formatTime24, formatUtcDay, isTodayUtcDay } from "~/utils/dateTime";
+import {
+  loadBatteryStatus,
+  type BatteryStatusReading,
+} from "~/logbook/batteryStatus.server";
 import type { Route } from "./+types/index";
 import {
   IconAntennaBars5,
+  IconBattery,
+  IconBattery1,
+  IconBattery2,
+  IconBattery3,
+  IconBattery4,
+  IconBatteryCharging,
   IconDeviceAnalytics,
   IconDownload,
   IconGitCompare,
@@ -36,7 +47,8 @@ export const meta: MetaFunction = () => {
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
-  const events = await getDb(context)
+  const db = getDb(context);
+  const events = await db
     .select({ id: Schema.Events.id })
     .from(Schema.Events)
     .where(
@@ -51,8 +63,37 @@ export async function loader({ context }: Route.LoaderArgs) {
     urlDate,
     password,
     hasData: events.length > 0,
+    batteryStatus:
+      events.length > 0
+        ? await loadBatteryStatus(db, { deviceId, dateString: urlDate })
+        : [],
   };
 }
+
+const BatteryLevelIcon = ({
+  reading,
+  color,
+}: {
+  reading: BatteryStatusReading;
+  color: string;
+}) => {
+  const props = { color, size: 32, stroke: 1.5 };
+  if (reading.charging) return <IconBatteryCharging {...props} />;
+  if (reading.level === null) return <IconBattery {...props} />;
+  if (reading.level >= 87.5) return <IconBattery4 {...props} />;
+  if (reading.level >= 62.5) return <IconBattery3 {...props} />;
+  if (reading.level >= 37.5) return <IconBattery2 {...props} />;
+  if (reading.level >= 12.5) return <IconBattery1 {...props} />;
+  return <IconBattery {...props} />;
+};
+
+const formatReading = (reading: BatteryStatusReading) => {
+  const value = Number.isInteger(reading.value)
+    ? reading.value
+    : reading.value.toFixed(reading.unit === "%" ? 0 : 2);
+  if (!reading.unit) return `${value}`;
+  return reading.unit === "%" ? `${value}%` : `${value} ${reading.unit}`;
+};
 
 export default function Page({ loaderData }: Route.ComponentProps) {
   const theme = useMantineTheme();
@@ -193,6 +234,66 @@ export default function Page({ loaderData }: Route.ComponentProps) {
             </UnstyledButton>
           </SimpleGrid>
         </Card>
+        {loaderData.batteryStatus.length > 0 ? (
+          <Card withBorder radius="md" className={classes.card}>
+            <Text className={classes.title}>Battery</Text>
+            <SimpleGrid cols={{ base: 1, xs: 2 }} mt="md">
+              {loaderData.batteryStatus.map((reading) => {
+                const color = reading.isLow
+                  ? theme.colors.red[6]
+                  : reading.charging
+                    ? theme.colors.green[6]
+                    : theme.colors.pink[6];
+                return (
+                  <Group
+                    key={reading.label}
+                    className={classes.batteryItem}
+                    wrap="nowrap"
+                  >
+                    <BatteryLevelIcon reading={reading} color={color} />
+                    <Stack gap={4} style={{ flex: 1 }}>
+                      <Group justify="space-between" wrap="nowrap">
+                        <Text size="sm" fw={600}>
+                          {reading.label}
+                        </Text>
+                        <Text
+                          size="sm"
+                          fw={600}
+                          c={reading.isLow ? "red" : undefined}
+                        >
+                          {formatReading(reading)}
+                        </Text>
+                      </Group>
+                      {reading.level !== null ? (
+                        <Progress
+                          value={reading.level}
+                          color={
+                            reading.isLow
+                              ? "red"
+                              : reading.charging
+                                ? "green"
+                                : "pink"
+                          }
+                          size="sm"
+                          aria-label={`${reading.label} level`}
+                        />
+                      ) : null}
+                      <Text size="xs" c="dimmed">
+                        {reading.charging === true
+                          ? "Charging · "
+                          : reading.charging === false
+                            ? "Not charging · "
+                            : ""}
+                        {isToday ? "Last reported" : "Last reading"}{" "}
+                        {formatTime24(reading.timestamp)}
+                      </Text>
+                    </Stack>
+                  </Group>
+                );
+              })}
+            </SimpleGrid>
+          </Card>
+        ) : null}
       </Stack>
     </Container>
   );
