@@ -23,9 +23,9 @@ export const timingPointLatLng = (cell: string) => {
  * The cells that cover a circle: those whose centres lie within `radiusMeters` (plus half a
  * cell edge) of a position.
  *
- * Used to seed a shape from a circle — when a place is named from the logbook, and when
- * migrating the radius-based timing points. The cell holding the position itself is always
- * included, so even a radius smaller than a cell yields a usable shape.
+ * Used to seed a shape from a circle, as when a place is named from the logbook. The cell
+ * holding the position itself is always included, so even a radius smaller than a cell
+ * yields a usable shape.
  */
 export const cellsForCircle = (
   latitude: number,

@@ -26,6 +26,7 @@ import {
 } from "h3-js";
 import {
   canvas,
+  circle as leafletCircle,
   divIcon,
   layerGroup,
   polygon as leafletPolygon,
@@ -84,6 +85,7 @@ function ShapeEditLayer({
   selectionRef,
   revision,
   paintMode,
+  brushRadius,
   anchor,
   onSelectionChange,
   onGridAvailable,
@@ -92,6 +94,8 @@ function ShapeEditLayer({
   /** Bumped whenever the parent replaces the selection wholesale. */
   revision: number;
   paintMode: boolean;
+  /** Metres around the cursor that one paint stroke covers. */
+  brushRadius: number;
   anchor: [number, number];
   onSelectionChange: (size: number) => void;
   onGridAvailable: (available: boolean) => void;
@@ -100,16 +104,39 @@ function ShapeEditLayer({
   const polygons = useRef(new Map<string, LeafletPolygon>());
   const paintModeRef = useRef(paintMode);
   paintModeRef.current = paintMode;
+  const brushRadiusRef = useRef(brushRadius);
+  brushRadiusRef.current = brushRadius;
 
+  // With the grid hidden (zoomed out), the selection is drawn as an outline instead, so
+  // the shape being edited never disappears. Redrawn at most every 100ms: outlining a
+  // large shape is too slow to do on every mouse move while painting.
+  const gridVisibleRef = useRef(false);
+  const outlineRef = useRef<LeafletPolygon | null>(null);
+  const outlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drawOutline = () => {
+    outlineTimer.current = null;
+    outlineRef.current?.setLatLngs(
+      gridVisibleRef.current || selectionRef.current.size === 0
+        ? []
+        : cellsToMultiPolygon([...selectionRef.current], false),
+    );
+  };
+  const scheduleOutline = () => {
+    if (gridVisibleRef.current || outlineTimer.current) return;
+    outlineTimer.current = setTimeout(drawOutline, 100);
+  };
+
+  /** Returns whether the selection changed; callers report the new size once they are done. */
   const setCell = (cell: string, selected: boolean) => {
     const selection = selectionRef.current;
-    if (selection.has(cell) === selected) return;
+    if (selection.has(cell) === selected) return false;
     if (selected) selection.add(cell);
     else selection.delete(cell);
     polygons.current
       .get(cell)
       ?.setStyle(selected ? SELECTED_STYLE : UNSELECTED_STYLE);
-    onSelectionChange(selection.size);
+    scheduleOutline();
+    return true;
   };
 
   const restyle = () => {
@@ -129,13 +156,22 @@ function ShapeEditLayer({
   useEffect(() => {
     const renderer = canvas({ padding: 0.5 });
     const group = layerGroup().addTo(map);
+    const outline = leafletPolygon([], {
+      ...SELECTED_STYLE,
+      weight: 2,
+      fillOpacity: 0.35,
+      interactive: false,
+    }).addTo(map);
+    outlineRef.current = outline;
 
     const rebuild = () => {
       group.clearLayers();
       polygons.current.clear();
 
       if (map.getZoom() < MIN_SHAPE_EDIT_ZOOM) {
+        gridVisibleRef.current = false;
         onGridAvailable(false);
+        drawOutline();
         return;
       }
 
@@ -150,10 +186,14 @@ function ShapeEditLayer({
         TIMING_POINT_H3_RESOLUTION,
       );
       if (cells.length > MAX_GRID_CELLS) {
+        gridVisibleRef.current = false;
         onGridAvailable(false);
+        drawOutline();
         return;
       }
 
+      gridVisibleRef.current = true;
+      drawOutline();
       onGridAvailable(true);
       for (const cell of cells) {
         const polygon = leafletPolygon(cellToBoundary(cell), {
@@ -166,6 +206,7 @@ function ShapeEditLayer({
         polygon.on("click", () => {
           if (paintModeRef.current) return;
           setCell(cell, !selectionRef.current.has(cell));
+          onSelectionChange(selectionRef.current.size);
         });
         polygon.addTo(group);
         polygons.current.set(cell, polygon);
@@ -177,51 +218,89 @@ function ShapeEditLayer({
     return () => {
       map.off("moveend", rebuild);
       group.remove();
+      outline.remove();
+      outlineRef.current = null;
+      if (outlineTimer.current) clearTimeout(outlineTimer.current);
       polygons.current.clear();
     };
     // `setCell` only closes over refs and a stable callback prop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
-  useEffect(restyle, [revision]);
+  useEffect(() => {
+    restyle();
+    drawOutline();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision]);
 
-  // Painting: dragging across cells sets them all the way the first one was not. Leaflet's
-  // own drag-to-pan has to be switched off for the duration or the map slides about.
+  // Painting: dragging a brush across the map sets every cell under it the way the cell
+  // first touched was not. Leaflet's own drag-to-pan has to be switched off for the
+  // duration or the map slides about.
   useEffect(() => {
     if (!paintMode) return;
     map.dragging.disable();
 
+    const brush = leafletCircle(map.getCenter(), {
+      radius: brushRadiusRef.current,
+      interactive: false,
+      color: "#e8590c",
+      weight: 1,
+      dashArray: "4",
+      fill: false,
+    });
+
     let painting: boolean | null = null; // The state being painted: selected or not.
+    let lastCell: string | null = null;
     const paint = (latlng: LatLng) => {
       const cell = latLngToCell(
         latlng.lat,
         latlng.lng,
         TIMING_POINT_H3_RESOLUTION,
       );
+      // A stroke moves a few pixels at a time, mostly staying inside one cell.
+      if (cell === lastCell) return;
+      lastCell = cell;
+
       if (painting === null) painting = !selectionRef.current.has(cell);
-      setCell(cell, painting);
+      let changed = false;
+      for (const brushed of cellsForCircle(
+        latlng.lat,
+        latlng.lng,
+        brushRadiusRef.current,
+      )) {
+        changed = setCell(brushed, painting) || changed;
+      }
+      if (changed) onSelectionChange(selectionRef.current.size);
     };
     const onDown = (event: { latlng: LatLng }) => {
       painting = null;
+      lastCell = null;
       paint(event.latlng);
     };
     const onMove = (event: { latlng: LatLng }) => {
+      brush.setLatLng(event.latlng).setRadius(brushRadiusRef.current);
+      if (!map.hasLayer(brush)) brush.addTo(map);
       if (painting !== null) paint(event.latlng);
     };
     const stop = () => {
       painting = null;
     };
+    const leave = () => {
+      stop();
+      brush.remove();
+    };
 
     map.on("mousedown", onDown);
     map.on("mousemove", onMove);
     map.on("mouseup", stop);
-    map.getContainer().addEventListener("mouseleave", stop);
+    map.getContainer().addEventListener("mouseleave", leave);
     return () => {
       map.dragging.enable();
       map.off("mousedown", onDown);
       map.off("mousemove", onMove);
       map.off("mouseup", stop);
-      map.getContainer().removeEventListener("mouseleave", stop);
+      map.getContainer().removeEventListener("mouseleave", leave);
+      brush.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, paintMode]);
@@ -338,6 +417,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
   const [selectionRevision, setSelectionRevision] = useState(0);
   const [paintMode, setPaintMode] = useState(false);
   const [gridAvailable, setGridAvailable] = useState(false);
+  const [brushRadius, setBrushRadius] = useState<number | string>(25);
   const [circleRadius, setCircleRadius] = useState<number | string>(40);
 
   const outlines = useMemo(
@@ -435,6 +515,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 selectionRef={selectionRef}
                 revision={selectionRevision}
                 paintMode={paintMode}
+                brushRadius={Number(brushRadius) || 1}
                 anchor={[shapeEditing.latitude, shapeEditing.longitude]}
                 onSelectionChange={setSelectionSize}
                 onGridAvailable={setGridAvailable}
@@ -535,6 +616,18 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                   checked={paintMode}
                   onChange={(event) => setPaintMode(event.currentTarget.checked)}
                 />
+                {paintMode && (
+                  <NumberInput
+                    label="Brush radius (m)"
+                    description="Cells cover about 10 m, so 25 m paints a patch of around 20"
+                    size="xs"
+                    w={150}
+                    min={1}
+                    max={500}
+                    value={brushRadius}
+                    onChange={setBrushRadius}
+                  />
+                )}
                 <Group gap="xs" align="flex-end">
                   <NumberInput
                     label="Circle radius (m)"
