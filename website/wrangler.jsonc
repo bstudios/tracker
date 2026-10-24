@@ -53,12 +53,6 @@
       "bucket_name": "tracker",
     },
   ],
-  // Neither of the two bindings above is marked `"remote": true`, even though both need the
-  // real service to do anything (Browser Rendering has no local simulator, and the local
-  // email simulator cannot serialise ArrayBuffer attachments). Setting it would make every
-  // `npm run dev` open an authenticated remote proxy session, so the whole site would stop
-  // starting for anyone not logged in to Cloudflare. It is a dev-only flag with no effect
-  // on deploys — to exercise the workflow locally, run `wrangler dev --remote` instead.
   "ratelimits": [
     {
       "name": "TRACKER_PASSWORD_LOGIN_RATE_LIMITER",
