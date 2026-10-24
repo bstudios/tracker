@@ -123,6 +123,16 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
   >(null);
   const fetcher = useFetcher();
 
+  // Offer the badges already used on a device's points, so they stay spelt the same.
+  const badgesForDevice = (deviceId: number) =>
+    Array.from(
+      new Set(
+        props.timingPoints
+          .filter((point) => point.deviceId === deviceId)
+          .flatMap((point) => point.badges),
+      ),
+    ).sort();
+
   const deviceNameById = (deviceId: number) =>
     props.devices.find((device) => device.id === deviceId)?.name ?? "Unknown";
 
@@ -202,6 +212,13 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                     <Text>Radius: {pin.radius}m</Text>
                     <Text>Device: {deviceNameById(pin.deviceId)}</Text>
                     <Text>Order: {pin.order}</Text>
+                    <Button
+                      size="xs"
+                      mt="xs"
+                      onClick={() => setEditingPoint(pin)}
+                    >
+                      Edit
+                    </Button>
                   </Popup>
                 </Marker>
                 <Circle
@@ -286,6 +303,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 description="Press Enter after each badge, e.g. Blue route"
                 name="badges"
                 defaultValue={editingPoint.badges}
+                data={badgesForDevice(editingPoint.deviceId)}
               />
               <Textarea
                 label="Description"
