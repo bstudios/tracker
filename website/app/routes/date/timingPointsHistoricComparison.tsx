@@ -13,6 +13,7 @@ import {
   parseTimingPointEvents,
   type TimingPointEvent,
 } from "~/utils/timingPointMatches";
+import { timingPointLatLng } from "~/utils/timingPointShape";
 import type { Route } from "./+types/timingPointsHistoricComparison";
 
 export const meta: MetaFunction = () => {
@@ -50,7 +51,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     .from(rankedEvents)
     .where(arrivalOrDepartureOnly)
     .groupBy(
-      rankedEvents.timing_point_id,
+      sql`${rankedEvents.timing_point_id}`,
       rankedEvents.name,
       rankedEvents.order,
       sql`${rankedEvents.date}`,
@@ -66,8 +67,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       order: selectedTimingPoints.order,
       icon: selectedTimingPoints.icon,
       googleLink: selectedTimingPoints.googleLink,
-      latitude: selectedTimingPoints.timing_point_latitude,
-      longitude: selectedTimingPoints.timing_point_longitude,
+      anchorCell: selectedTimingPoints.anchorCell,
       badges: selectedTimingPoints.badges,
       description: selectedTimingPoints.description,
     })
@@ -121,8 +121,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     order: number;
     icon: string | null;
     googleLink: string | null;
-    latitude: number;
-    longitude: number;
+    anchorCell: string;
     badges: unknown;
     description: string | null;
   }[]) {
@@ -138,8 +137,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       name: tp.name,
       icon: tp.icon,
       googleLink: tp.googleLink,
-      latitude: tp.latitude,
-      longitude: tp.longitude,
+      ...timingPointLatLng(tp.anchorCell),
       badges: normaliseBadges(tp.badges),
       description: tp.description,
     };

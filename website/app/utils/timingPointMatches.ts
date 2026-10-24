@@ -1,7 +1,6 @@
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { and, eq, or, sql } from "drizzle-orm";
 import * as Schema from "~/database/schema.d";
-import { haversineMetersSql } from "./geo";
 
 /**
  * How a device's visit to a timing point is classified.
@@ -39,11 +38,10 @@ export const parseTimingPointEvents = (json: string): TimingPointEvent[] => {
 /**
  * Build the CTE chain that matches a device's events against its timing points.
  *
- * Matching is two-stage. Timing points are joined to events through
- * `timing_point_h3_cells`, which cheaply narrows candidates to events in an H3 cell the
- * timing point's radius covers, and only then is the exact haversine distance applied.
- * Matched events are ranked within their group so the first and last can be labelled as an
- * arrival and a departure.
+ * An event matches a timing point when the event's `h3_cell` is one of the cells in the
+ * point's shape (`timing_point_cells`), so matching is a join rather than a distance
+ * calculation. Matched events are ranked within their group so the first and last can be
+ * labelled as an arrival and a departure.
  *
  * The caller composes its own final `SELECT` from the returned handles, because the two
  * consumers want genuinely different shapes: the per-day page left-joins back onto every
@@ -78,21 +76,13 @@ export function buildTimingPointMatchCtes(
         googleLink: Schema.TimingPoints.googleLink,
         badges: Schema.TimingPoints.badges,
         description: Schema.TimingPoints.description,
-        timing_point_latitude: sql<number>`${Schema.TimingPoints.latitude}`.as(
-          "timing_point_latitude",
-        ),
-        timing_point_longitude:
-          sql<number>`${Schema.TimingPoints.longitude}`.as(
-            "timing_point_longitude",
-          ),
-        radius: Schema.TimingPoints.radius,
+        anchorCell: Schema.TimingPoints.anchorCell,
       })
       .from(Schema.TimingPoints)
       .where(eq(Schema.TimingPoints.deviceId, deviceId)),
   );
 
-  // Events near enough to a timing point to be worth measuring, found via the H3 cells
-  // that cover each timing point's radius.
+  // Events that landed in one of a timing point's cells.
   const candidateEvents = db.$with("candidate_events").as(
     db
       .select({
@@ -101,43 +91,27 @@ export function buildTimingPointMatchCtes(
         ),
         name: selectedTimingPoints.name,
         order: selectedTimingPoints.order,
-        radius: selectedTimingPoints.radius,
-        timing_point_latitude:
-          sql<number>`${selectedTimingPoints.timing_point_latitude}`.as(
-            "timing_point_latitude",
-          ),
-        timing_point_longitude:
-          sql<number>`${selectedTimingPoints.timing_point_longitude}`.as(
-            "timing_point_longitude",
-          ),
         date: Schema.Events.dateString,
         event_id: sql<number>`${Schema.Events.id}`.as("event_id"),
         timestamp: Schema.Events.timestamp,
-        event_latitude: sql<number>`${Schema.Events.latitude}`.as(
-          "event_latitude",
-        ),
-        event_longitude: sql<number>`${Schema.Events.longitude}`.as(
-          "event_longitude",
-        ),
       })
-      .from(selectedTimingPoints)
-      .innerJoin(
-        Schema.TimingPointH3Cells,
-        eq(Schema.TimingPointH3Cells.timingPointId, selectedTimingPoints.id),
-      )
-      .innerJoin(
-        Schema.Events,
-        eq(Schema.Events.h3Index, Schema.TimingPointH3Cells.h3Index),
-      )
+      // Cross joins pin the order: the day's events drive, and each one looks up the
+      // cell it landed in. Left to choose, SQLite walks the events once per timing point.
+      .from(Schema.Events)
+      .crossJoin(Schema.TimingPointCells)
+      .crossJoin(selectedTimingPoints)
       .where(
         and(
           eq(Schema.Events.deviceId, deviceId),
           dateString ? eq(Schema.Events.dateString, dateString) : undefined,
+          eq(Schema.TimingPointCells.h3Index, Schema.Events.h3Cell),
+          eq(Schema.TimingPointCells.timingPointId, selectedTimingPoints.id),
         ),
       ),
   );
 
-  // Candidates that are genuinely inside the timing point's radius.
+  // Passes the aliased columns above through one more CTE, which is what makes them plain
+  // columns again for the ranking below.
   const matchingEvents = db.$with("matching_events").as(
     db
       .select({
@@ -148,15 +122,7 @@ export function buildTimingPointMatchCtes(
         event_id: candidateEvents.event_id,
         timestamp: candidateEvents.timestamp,
       })
-      .from(candidateEvents)
-      .where(
-        sql`${haversineMetersSql(
-          candidateEvents.event_latitude,
-          candidateEvents.event_longitude,
-          candidateEvents.timing_point_latitude,
-          candidateEvents.timing_point_longitude,
-        )} <= ${candidateEvents.radius}`,
-      ),
+      .from(candidateEvents),
   );
 
   const partition = partitionByDate

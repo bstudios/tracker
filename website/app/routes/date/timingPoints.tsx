@@ -11,6 +11,7 @@ import {
   buildTimingPointMatchCtes,
   parseTimingPointEvents,
 } from "~/utils/timingPointMatches";
+import { timingPointLatLng } from "~/utils/timingPointShape";
 import type { Route } from "./+types/timingPoints";
 
 export const meta: MetaFunction = () => {
@@ -42,7 +43,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       })
       .from(rankedEvents)
       .where(arrivalOrDepartureOnly)
-      .groupBy(rankedEvents.timing_point_id),
+      .groupBy(sql`${rankedEvents.timing_point_id}`),
   );
 
   // Return all of the device's timing points, including those nothing matched today, so
@@ -57,8 +58,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       googleLink: selectedTimingPoints.googleLink,
       badges: selectedTimingPoints.badges,
       description: selectedTimingPoints.description,
-      latitude: selectedTimingPoints.timing_point_latitude,
-      longitude: selectedTimingPoints.timing_point_longitude,
+      anchorCell: selectedTimingPoints.anchorCell,
       events: sql<string>`coalesce(${aggregatedEvents.events}, '[]')`.as(
         "events",
       ),
@@ -71,7 +71,10 @@ export async function loader({ context }: Route.LoaderArgs) {
     .orderBy(asc(selectedTimingPoints.order));
 
   return {
-    timingPoints: timingPointsWithEvents as {
+    timingPoints: timingPointsWithEvents.map(({ anchorCell, ...timingPoint }) => ({
+      ...timingPoint,
+      ...timingPointLatLng(anchorCell),
+    })) as {
       timing_point_id: number;
       name: string;
       order: number;

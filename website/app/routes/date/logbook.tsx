@@ -50,7 +50,8 @@ import {
 } from "~/logbook/pdfArchive.server";
 import { DISPLAY_TIME_ZONE, formatTime24, formatUtcDay } from "~/utils/dateTime";
 import { formatDistance } from "~/utils/distanceUnits";
-import { rebuildTimingPointH3Coverage } from "~/utils/timingPointH3";
+import { saveTimingPointCells } from "~/utils/timingPointCells.server";
+import { anchorCellForCells, cellsForCircle } from "~/utils/timingPointShape";
 import type { Route } from "./+types/logbook";
 
 export const meta: MetaFunction = () => {
@@ -158,8 +159,8 @@ export async function action({ context, request }: Route.ActionArgs) {
     .where(eq(Schema.Devices.id, deviceId))
     .limit(1);
 
-  // Default the radius to whatever counts as "stopped here" for this device, so a place
-  // named from a logbook line will match the same stop again tomorrow.
+  // Seed the shape with a circle as wide as whatever counts as "stopped here" for this
+  // device, so a place named from a logbook line will match the same stop again tomorrow.
   let radius = 100;
   try {
     radius = parseLogbookConfig(device?.logbookConfig).stationary.radiusMeters;
@@ -167,19 +168,15 @@ export async function action({ context, request }: Route.ActionArgs) {
     // Leave the default; a malformed config is the admin page's problem to report.
   }
 
+  const cells = cellsForCircle(latitude, longitude, radius);
+
+  // Without its cells a timing point matches nothing, so they are written straight away
+  // rather than leaving a point that silently never appears on the timings page.
   const [timingPoint] = await db
     .insert(Schema.TimingPoints)
-    .values({ name, deviceId, latitude, longitude, radius, h3Index: "" })
-    .returning({
-      id: Schema.TimingPoints.id,
-      latitude: Schema.TimingPoints.latitude,
-      longitude: Schema.TimingPoints.longitude,
-      radius: Schema.TimingPoints.radius,
-    });
-
-  // Without its H3 coverage rows a timing point matches nothing, so build them now rather
-  // than leaving a point that silently never appears on the timings page.
-  await rebuildTimingPointH3Coverage(db, timingPoint);
+    .values({ name, deviceId, anchorCell: anchorCellForCells(cells) })
+    .returning({ id: Schema.TimingPoints.id });
+  await saveTimingPointCells(db, timingPoint.id, cells);
 
   // Every past day the boat stopped here now reads with the name instead of coordinates,
   // so the archived PDFs for those days no longer match the page.

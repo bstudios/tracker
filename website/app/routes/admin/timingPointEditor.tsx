@@ -4,10 +4,14 @@ import { DateTime } from "luxon";
 import { type MetaFunction } from "react-router";
 import { TimingPointEditor } from "~/components/TimingPointEditor/TimingPointEditor";
 import * as Schema from "~/database/schema.d";
+import { compactCells, getResolution, isValidCell } from "h3-js";
+import { TIMING_POINT_H3_RESOLUTION } from "~/constants/h3";
+import { saveTimingPointCells } from "~/utils/timingPointCells.server";
 import {
-  getTimingPointH3Coverage,
-  rebuildTimingPointH3Coverage,
-} from "~/utils/timingPointH3";
+  anchorCellForCells,
+  cellsForCircle,
+  timingPointLatLng,
+} from "~/utils/timingPointShape";
 import { invalidateLogbookArchive } from "~/logbook/pdfArchive.server";
 import type { Route } from "./+types/timingPointEditor";
 
@@ -60,6 +64,23 @@ const parseDescriptionInput = (raw: FormDataEntryValue | null) => {
   return description.length > 0 ? description : null;
 };
 
+const parseCellsInput = (raw: FormDataEntryValue | null) => {
+  const cells: unknown = JSON.parse((raw as string | null) ?? "[]");
+  if (
+    !Array.isArray(cells) ||
+    cells.length === 0 ||
+    !cells.every(
+      (cell) =>
+        typeof cell === "string" &&
+        isValidCell(cell) &&
+        getResolution(cell) === TIMING_POINT_H3_RESOLUTION,
+    )
+  ) {
+    throw new Error("A timing point needs a shape made of at least one cell.");
+  }
+  return cells as string[];
+};
+
 export async function loader({ context, params }: Route.LoaderArgs) {
   const db = getDb(context);
 
@@ -78,10 +99,25 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     .from(Schema.Events)
     .orderBy(desc(Schema.Events.timestamp))
     .where(and(eq(Schema.Events.dateString, urlDate)));
-  const timingPoints = await db
+  const timingPointRows = await db
     .select()
     .from(Schema.TimingPoints)
     .orderBy(asc(Schema.TimingPoints.order));
+  const cellRows = await db.select().from(Schema.TimingPointCells);
+  const cellsByTimingPoint = new Map<number, string[]>();
+  for (const { timingPointId, h3Index } of cellRows) {
+    cellsByTimingPoint.set(timingPointId, [
+      ...(cellsByTimingPoint.get(timingPointId) ?? []),
+      h3Index,
+    ]);
+  }
+  // Shapes travel compacted — a large point is thousands of cells but a few dozen once
+  // neighbouring cells are merged into their parents. The editor expands them again.
+  const timingPoints = timingPointRows.map((timingPoint) => ({
+    ...timingPoint,
+    ...timingPointLatLng(timingPoint.anchorCell),
+    cells: compactCells(cellsByTimingPoint.get(timingPoint.id) ?? []),
+  }));
   const devices = await db
     .select({ id: Schema.Devices.id, name: Schema.Devices.name })
     .from(Schema.Devices)
@@ -108,37 +144,20 @@ export async function action({ context, request }: Route.ActionArgs) {
     const radius = parseInt(formData.get("radius") as string);
     const deviceId = await parseDeviceIdInput(db, formData.get("deviceId"));
 
-    const { centerH3Index, coveringCells } = getTimingPointH3Coverage({
-      latitude,
-      longitude,
-      radiusMeters: radius,
-    });
-
-    const newTimingPoint = await db
+    // A new point starts as a circle around where it was placed; its shape is then
+    // adjusted cell by cell.
+    // The anchor is set on insert so no page ever reads a point that has no position.
+    const cells = cellsForCircle(latitude, longitude, radius);
+    const [newTimingPoint] = await db
       .insert(Schema.TimingPoints)
-      .values({
-        name,
-        deviceId,
-        latitude,
-        longitude,
-        radius,
-        h3Index: centerH3Index,
-      })
+      .values({ name, deviceId, anchorCell: anchorCellForCells(cells) })
       .returning({ id: Schema.TimingPoints.id });
-    if (newTimingPoint.length === 0)
-      throw new Error("Failed to create timing point");
+    if (!newTimingPoint) throw new Error("Failed to create timing point");
 
-    if (coveringCells.length > 0) {
-      await db.insert(Schema.TimingPointH3Cells).values(
-        coveringCells.map((h3Index) => ({
-          timingPointId: newTimingPoint[0].id,
-          h3Index,
-        })),
-      );
-    }
+    await saveTimingPointCells(db, newTimingPoint.id, cells);
 
     await invalidateArchive(context, deviceId);
-    return { created: newTimingPoint[0].id };
+    return { created: newTimingPoint.id };
   } else if (request.method === "DELETE") {
     const id = parseInt(formData.get("id") as string);
     // Read the owner before the row goes, so we know whose archive to drop.
@@ -148,26 +167,18 @@ export async function action({ context, request }: Route.ActionArgs) {
       .where(eq(Schema.TimingPoints.id, id))
       .limit(1);
     await db
-      .delete(Schema.TimingPointH3Cells)
-      .where(eq(Schema.TimingPointH3Cells.timingPointId, id));
+      .delete(Schema.TimingPointCells)
+      .where(eq(Schema.TimingPointCells.timingPointId, id));
     await db.delete(Schema.TimingPoints).where(eq(Schema.TimingPoints.id, id));
     if (doomed) await invalidateArchive(context, doomed.deviceId);
     return { success: true };
   } else if (request.method === "PUT") {
     const id = parseInt(formData.get("id") as string);
-    const name = formData.get("name") as string;
-    const radius = parseInt(formData.get("radius") as string);
-    const order = parseInt(formData.get("order") as string);
-    const badges = parseBadgesInput(formData.get("badges"));
-    const description = parseDescriptionInput(formData.get("description"));
-    const deviceId = await parseDeviceIdInput(db, formData.get("deviceId"));
 
     const [existingTimingPoint] = await db
       .select({
         id: Schema.TimingPoints.id,
         deviceId: Schema.TimingPoints.deviceId,
-        latitude: Schema.TimingPoints.latitude,
-        longitude: Schema.TimingPoints.longitude,
       })
       .from(Schema.TimingPoints)
       .where(eq(Schema.TimingPoints.id, id))
@@ -177,31 +188,23 @@ export async function action({ context, request }: Route.ActionArgs) {
       throw new Error("Timing point not found");
     }
 
-    const { centerH3Index } = getTimingPointH3Coverage({
-      latitude: existingTimingPoint.latitude,
-      longitude: existingTimingPoint.longitude,
-      radiusMeters: radius,
-    });
+    // Reshaping is its own request so the details form never has to carry the cells.
+    if (formData.get("intent") === "shape") {
+      await saveTimingPointCells(db, id, parseCellsInput(formData.get("cells")));
+      await invalidateArchive(context, existingTimingPoint.deviceId);
+      return { success: true };
+    }
+
+    const name = formData.get("name") as string;
+    const order = parseInt(formData.get("order") as string);
+    const badges = parseBadgesInput(formData.get("badges"));
+    const description = parseDescriptionInput(formData.get("description"));
+    const deviceId = await parseDeviceIdInput(db, formData.get("deviceId"));
 
     await db
       .update(Schema.TimingPoints)
-      .set({
-        name,
-        radius,
-        order,
-        deviceId,
-        badges,
-        description,
-        h3Index: centerH3Index,
-      })
+      .set({ name, order, deviceId, badges, description })
       .where(eq(Schema.TimingPoints.id, id));
-
-    await rebuildTimingPointH3Coverage(db, {
-      id,
-      latitude: existingTimingPoint.latitude,
-      longitude: existingTimingPoint.longitude,
-      radius,
-    });
 
     // A point can be reassigned between devices, so both archives are now suspect.
     await invalidateArchive(context, deviceId);

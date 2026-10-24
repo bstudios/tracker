@@ -4,6 +4,7 @@ import { z as zod } from "zod";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/appUpload";
 import { getH3IndexForLocation, toUtcDateString } from "~/utils/h3";
+import { timingPointCellForLocation } from "~/utils/timingPointShape";
 
 export const loader = async ({}: Route.LoaderArgs) => redirect("/");
 
@@ -56,6 +57,7 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
       latitude,
       longitude,
       h3Index: getH3IndexForLocation(latitude, longitude),
+      h3Cell: timingPointCellForLocation(latitude, longitude),
       deviceId: 1, // TODO: This should be the device ID that is associated with the API key that was used to authenticate this request.
       data: {
         location: {
