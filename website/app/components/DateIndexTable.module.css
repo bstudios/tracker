@@ -53,3 +53,12 @@
     transform: scale(1.01);
   }
 }
+
+.batteryItem {
+  border-radius: var(--mantine-radius-md);
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  background-color: light-dark(
+    var(--mantine-color-white),
+    var(--mantine-color-dark-6)
+  );
+}

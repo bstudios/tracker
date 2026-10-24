@@ -211,7 +211,7 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
 
             <Textarea
               label="Logbook configuration (JSON)"
-              description="Leave blank to use the defaults: stop after 15 minutes within 100 m, signal lost after 20 minutes without a report, distance steps under 20 m ignored as GPS noise, and no voltage lines."
+              description="Leave blank to use the defaults: stop after 15 minutes within 100 m, signal lost after 20 minutes without a report, distance steps under 20 m ignored as GPS noise, no voltage lines, and the tracker's own battery on the tracking menu. Map other readings into the menu's battery card with batteryStatus.sources (an empty list hides it)."
               name="logbookConfig"
               placeholder={LOGBOOK_CONFIG_EXAMPLE}
               autosize
@@ -232,7 +232,9 @@ export default function Page({ loaderData, actionData }: Route.ComponentProps) {
             <Text c="dimmed" size="sm">
               Taken from the {sampleSize} most recent event
               {sampleSize === 1 ? "" : "s"}. Copy a path into a voltage
-              source&apos;s <Code>jsonPath</Code> to log its band changes.
+              source&apos;s <Code>jsonPath</Code> to log its band changes, or
+              into a <Code>batteryStatus</Code> source to show it on the
+              tracking menu.
             </Text>
             {detectedFields.length === 0 ? (
               <Text c="dimmed" size="sm">
