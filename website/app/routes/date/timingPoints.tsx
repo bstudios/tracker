@@ -1,8 +1,7 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { Anchor, Container, Group, Table, Title } from "@mantine/core";
-import { IconCoffee, IconGasStation, IconTrain } from "@tabler/icons-react";
+import { Container, Table, Title } from "@mantine/core";
 import { asc, eq, sql } from "drizzle-orm";
-import { Link, type MetaFunction } from "react-router";
+import { type MetaFunction } from "react-router";
 import {
   normaliseBadges,
   TimingPointLabel,
@@ -110,30 +109,13 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                 <Table.Tr key={timingPoint.timing_point_id}>
                   <Table.Td>
                     <TimingPointLabel
+                      name={timingPoint.name}
+                      icon={timingPoint.icon}
+                      googleLink={timingPoint.googleLink}
+                      latitude={timingPoint.latitude}
+                      longitude={timingPoint.longitude}
                       badges={normaliseBadges(timingPoint.badges)}
                       description={timingPoint.description}
-                      name={
-                        <Group justify="flex-start">
-                          {timingPoint.icon === "IconCoffee" ? (
-                            <IconCoffee />
-                          ) : timingPoint.icon === "IconGasStation" ? (
-                            <IconGasStation />
-                          ) : timingPoint.icon === "IconTrain" ? (
-                            <IconTrain />
-                          ) : null}
-                          <Anchor
-                            c="inherit"
-                            component={Link}
-                            to={
-                              timingPoint.googleLink ??
-                              `https://www.google.com/maps?q=${timingPoint.latitude},${timingPoint.longitude}`
-                            }
-                            target="_blank"
-                          >
-                            {timingPoint.name}
-                          </Anchor>
-                        </Group>
-                      }
                     />
                   </Table.Td>
                   {events.length === 0 && <Table.Td colSpan={2}></Table.Td>}

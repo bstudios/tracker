@@ -1,4 +1,13 @@
-import { Badge, Group, Stack, Text, type MantineColor } from "@mantine/core";
+import {
+  Anchor,
+  Badge,
+  Group,
+  Stack,
+  Text,
+  type MantineColor,
+} from "@mantine/core";
+import { IconCoffee, IconGasStation, IconTrain } from "@tabler/icons-react";
+import { Link } from "react-router";
 
 // Badges named after a colour ("Blue route") are shown in that colour.
 const BADGE_COLORS: MantineColor[] = [
@@ -39,15 +48,46 @@ export const normaliseBadges = (badges: unknown): string[] => {
   return [];
 };
 
-/** A timing point's name, followed by its badges, with its description beneath. */
-export const TimingPointLabel = (props: {
-  name: React.ReactNode;
+const TimingPointIcon = (props: { icon: string | null }) =>
+  props.icon === "IconCoffee" ? (
+    <IconCoffee />
+  ) : props.icon === "IconGasStation" ? (
+    <IconGasStation />
+  ) : props.icon === "IconTrain" ? (
+    <IconTrain />
+  ) : null;
+
+/**
+ * A timing point's icon and name (linking to it on Google Maps), followed by its badges,
+ * with its description beneath. Shared by every table that lists timing points so they
+ * all read the same.
+ */
+export type TimingPointLabelProps = {
+  name: string;
+  icon: string | null;
+  googleLink: string | null;
+  latitude: number;
+  longitude: number;
   badges: string[];
   description: string | null;
-}) => (
+};
+
+export const TimingPointLabel = (props: TimingPointLabelProps) => (
   <Stack gap={2}>
     <Group gap="xs" wrap="wrap">
-      {props.name}
+      <TimingPointIcon icon={props.icon} />
+      <Anchor
+        c="inherit"
+        inherit
+        component={Link}
+        to={
+          props.googleLink ??
+          `https://www.google.com/maps?q=${props.latitude},${props.longitude}`
+        }
+        target="_blank"
+      >
+        {props.name}
+      </Anchor>
       {props.badges.map((badge) => (
         <Badge key={badge} size="sm" variant="light" color={badgeColor(badge)}>
           {badge}

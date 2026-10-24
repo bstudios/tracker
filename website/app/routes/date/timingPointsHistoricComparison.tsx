@@ -5,6 +5,7 @@ import { type MetaFunction } from "react-router";
 import {
   normaliseBadges,
   TimingPointLabel,
+  type TimingPointLabelProps,
 } from "~/components/TimingPointLabel";
 import { formatTime24 } from "~/utils/dateTime";
 import {
@@ -63,6 +64,10 @@ export async function loader({ context }: Route.LoaderArgs) {
       id: selectedTimingPoints.id,
       name: selectedTimingPoints.name,
       order: selectedTimingPoints.order,
+      icon: selectedTimingPoints.icon,
+      googleLink: selectedTimingPoints.googleLink,
+      latitude: selectedTimingPoints.timing_point_latitude,
+      longitude: selectedTimingPoints.timing_point_longitude,
       badges: selectedTimingPoints.badges,
       description: selectedTimingPoints.description,
     })
@@ -84,8 +89,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     {
       name: string;
       order: number;
-      badges: string[];
-      description: string | null;
+      label: TimingPointLabelProps | null;
       byDate: Record<string, TimingPointEvent[]>;
     }
   > = {};
@@ -102,8 +106,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       grouped[row.timing_point_id] = {
         name: row.name,
         order: row.order,
-        badges: [],
-        description: null,
+        label: null,
         byDate: {},
       };
     }
@@ -111,11 +114,15 @@ export async function loader({ context }: Route.LoaderArgs) {
   }
 
   // Ensure timing points with no events are included
-  // and carry every timing point's badges and description.
+  // and carry everything the location column shows for each one.
   for (const tp of deviceTimingPoints as {
     id: number;
     name: string;
     order: number;
+    icon: string | null;
+    googleLink: string | null;
+    latitude: number;
+    longitude: number;
     badges: unknown;
     description: string | null;
   }[]) {
@@ -123,13 +130,19 @@ export async function loader({ context }: Route.LoaderArgs) {
       grouped[tp.id] = {
         name: tp.name,
         order: tp.order,
-        badges: [],
-        description: null,
+        label: null,
         byDate: {},
       };
     }
-    grouped[tp.id].badges = normaliseBadges(tp.badges);
-    grouped[tp.id].description = tp.description;
+    grouped[tp.id].label = {
+      name: tp.name,
+      icon: tp.icon,
+      googleLink: tp.googleLink,
+      latitude: tp.latitude,
+      longitude: tp.longitude,
+      badges: normaliseBadges(tp.badges),
+      description: tp.description,
+    };
   }
 
   const rows = Object.entries(grouped)
@@ -138,8 +151,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       timing_point_id: Number(tpId),
       name: info.name,
       order: info.order,
-      badges: info.badges,
-      description: info.description,
+      label: info.label,
       byDate: info.byDate,
     }));
 
@@ -149,8 +161,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       timing_point_id: number;
       name: string;
       order: number;
-      badges: string[];
-      description: string | null;
+      label: TimingPointLabelProps | null;
       byDate: Record<
         string,
         {
@@ -186,8 +197,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               (row: {
                 timing_point_id: number;
                 name: string;
-                badges: string[];
-                description: string | null;
+                label: TimingPointLabelProps | null;
                 byDate: Record<
                   string,
                   {
@@ -199,11 +209,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               }) => (
                 <Table.Tr key={row.timing_point_id}>
                   <Table.Td>
-                    <TimingPointLabel
-                      name={row.name}
-                      badges={row.badges}
-                      description={row.description}
-                    />
+                    {row.label ? <TimingPointLabel {...row.label} /> : row.name}
                   </Table.Td>
                   {loaderData.dates.flatMap((d: string) => {
                     const events = row.byDate[d] || [];
