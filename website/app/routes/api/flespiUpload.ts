@@ -7,6 +7,7 @@ import { Devices } from "~/database/schema/Devices";
 import { eq, inArray } from "drizzle-orm";
 import type { Route } from "./+types/flespiUpload";
 import { getH3IndexForLocation, toUtcDateString } from "~/utils/h3";
+import { timingPointCellForLocation } from "~/utils/timingPointShape";
 
 const rawMessageSchema = zod.compile(zod.record(zod.string(), zod.unknown()));
 
@@ -171,6 +172,7 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
     latitude: number;
     longitude: number;
     h3Index: string;
+    h3Cell: string;
     deviceId: number;
     data: {
       location: {
@@ -341,6 +343,10 @@ export const action = async ({ context, request }: Route.ActionArgs) => {
       latitude: normalized.data.latitude,
       longitude: normalized.data.longitude,
       h3Index: getH3IndexForLocation(
+        normalized.data.latitude,
+        normalized.data.longitude,
+      ),
+      h3Cell: timingPointCellForLocation(
         normalized.data.latitude,
         normalized.data.longitude,
       ),

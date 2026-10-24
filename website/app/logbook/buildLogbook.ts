@@ -1,5 +1,6 @@
 import { formatDurationBetween, formatTime24 } from "~/utils/dateTime";
 import { haversineMeters } from "~/utils/geo";
+import { timingPointCellForLocation } from "~/utils/timingPointShape";
 import type { LogbookConfig } from "./config";
 import type { VoltageRun } from "./voltageRuns.server";
 
@@ -25,10 +26,11 @@ export type LogbookEvent = {
 export type LogbookTimingPoint = {
   id: number;
   name: string;
+  /** Where the point is placed, for the coordinates shown against it. */
   latitude: number;
   longitude: number;
-  /** Metres. */
-  radius: number;
+  /** The H3 cells making up the point's shape. */
+  cells: ReadonlySet<string>;
 };
 
 export type LogbookEntryKind =
@@ -319,7 +321,7 @@ export function buildCumulativeDistanceLookup(
   return { at, totalMeters: total };
 }
 
-/** A contiguous run of fixes inside one timing point's radius. */
+/** A contiguous run of fixes inside one timing point's shape. */
 type TimingPointVisit = {
   timingPoint: LogbookTimingPoint;
   startTimestamp: number;
@@ -330,9 +332,8 @@ type TimingPointVisit = {
  * Find every visit to every timing point, in order.
  *
  * Every visit, not just the first and last of the day: a boat rounding the same headland
- * three times should produce three sets of lines. A device has a handful of timing points,
- * so each fix is simply tested against all of them — the H3 pre-filter the SQL matcher
- * needs is not worth it over an in-memory list this small.
+ * three times should produce three sets of lines. Each fix is looked up in every
+ * timing point's cell set, which is cheap enough over a device's handful of points.
  */
 const findTimingPointVisits = (
   events: LogbookEvent[],
@@ -340,17 +341,15 @@ const findTimingPointVisits = (
 ): TimingPointVisit[] => {
   const visits: TimingPointVisit[] = [];
 
+  const eventCells = events.map((event) =>
+    timingPointCellForLocation(event.latitude, event.longitude),
+  );
+
   for (const timingPoint of timingPoints) {
     let openVisit: TimingPointVisit | null = null;
 
-    for (const event of events) {
-      const isInside =
-        haversineMeters(
-          timingPoint.latitude,
-          timingPoint.longitude,
-          event.latitude,
-          event.longitude,
-        ) <= timingPoint.radius;
+    for (const [index, event] of events.entries()) {
+      const isInside = timingPoint.cells.has(eventCells[index]);
 
       if (isInside) {
         if (openVisit) {
@@ -467,10 +466,10 @@ export function buildLogbook(args: {
   const distanceLookup = buildCumulativeDistanceLookup(events, config);
 
   // Time ranges already accounted for by a stationary stop at a named place, per timing
-  // point. Stopping inside a timing point's radius otherwise gets picked up twice — once
+  // point. Stopping inside a timing point otherwise gets picked up twice — once
   // as a stop and once as a visit — and the logbook shows the same arrival on two lines.
   // The stationary segment is the better record of the two: it measures the real dwell
-  // rather than however long the boat happened to sit inside the radius.
+  // rather than however long the boat happened to sit inside the shape.
   const claimedByStop = new Map<number, Array<[number, number]>>();
 
   // Prefer a known name over coordinates when the boat stopped somewhere already on the
@@ -478,12 +477,9 @@ export function buildLogbook(args: {
   const resolvePlace = (segment: StationarySegment) => {
     const knownPoint = timingPoints.find(
       (timingPoint) =>
-        haversineMeters(
-          timingPoint.latitude,
-          timingPoint.longitude,
-          segment.latitude,
-          segment.longitude,
-        ) <= timingPoint.radius,
+        timingPoint.cells.has(
+          timingPointCellForLocation(segment.latitude, segment.longitude),
+        ),
     );
 
     const place =

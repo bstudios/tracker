@@ -3,9 +3,16 @@ import type { InferSelectModel } from "drizzle-orm";
 import { ClientOnly } from "remix-utils/client-only";
 import * as Schema from "~/database/schema.d";
 import { TimingPointEditor as TimingPointEditorClient } from "./TimingPointEditor.client";
+export type EditorTimingPoint = InferSelectModel<typeof Schema.TimingPoints> & {
+  /** Where the point's anchor cell sits. */
+  latitude: number;
+  longitude: number;
+  /** The point's shape, compacted — see `compactCells` — to keep the payload small. */
+  cells: string[];
+};
 export interface TimingPointEditorProps {
   editorPath: string;
-  timingPoints: InferSelectModel<typeof Schema.TimingPoints>[];
+  timingPoints: EditorTimingPoint[];
   devices: { id: number; name: string }[];
   pins: {
     latitude: number;

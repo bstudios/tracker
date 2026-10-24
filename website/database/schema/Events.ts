@@ -19,6 +19,9 @@ export const Events = sqliteTable(
     latitude: real("latitude").notNull(),
     longitude: real("longitude").notNull(),
     h3Index: text("h3_index").notNull(),
+    // The fix's cell at `TIMING_POINT_H3_RESOLUTION`, so matching an event to a timing point
+    // is an equality join on `timing_point_cells` rather than a distance calculation.
+    h3Cell: text("h3_cell").notNull().default(""),
     data: text("data", { mode: "json" })
       .$type<{
         location: {
@@ -48,6 +51,11 @@ export const Events = sqliteTable(
       table.deviceId,
       table.dateString,
       table.h3Index,
+    ),
+    index("device_h3Cell_dateString_idx").on(
+      table.deviceId,
+      table.h3Cell,
+      table.dateString,
     ),
     index("device_dateString_timestamp_idx").on(
       table.deviceId,

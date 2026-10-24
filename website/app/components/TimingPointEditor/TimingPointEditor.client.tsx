@@ -5,30 +5,233 @@ import {
   MantineProvider,
   Modal,
   NumberInput,
+  Paper,
   Select,
+  Stack,
+  Switch,
+  TagsInput,
   Text,
+  Textarea,
   TextInput,
   ThemeIcon,
 } from "@mantine/core";
 import { useViewportSize } from "@mantine/hooks";
 import { IconPinned, IconTrash } from "@tabler/icons-react";
-import { divIcon, type LatLng } from "leaflet";
+import {
+  cellsToMultiPolygon,
+  cellToBoundary,
+  latLngToCell,
+  polygonToCells,
+  uncompactCells,
+} from "h3-js";
+import {
+  canvas,
+  divIcon,
+  layerGroup,
+  polygon as leafletPolygon,
+  type LatLng,
+  type Polygon as LeafletPolygon,
+} from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   AttributionControl,
-  Circle,
   MapContainer,
   Marker,
+  Polygon,
   Polyline,
   Popup,
   TileLayer,
+  useMap,
   useMapEvents,
 } from "react-leaflet";
 import { useFetcher } from "react-router";
+import { TIMING_POINT_H3_RESOLUTION } from "~/constants/h3";
 import { theme } from "~/root";
-import type { TimingPointEditorProps } from "./TimingPointEditor";
+import { cellsForCircle } from "~/utils/timingPointShape";
+import type {
+  EditorTimingPoint,
+  TimingPointEditorProps,
+} from "./TimingPointEditor";
+
+/** Below this zoom the cells are too small to pick out, so the grid is not drawn. */
+const MIN_SHAPE_EDIT_ZOOM = 17;
+/** Stops a very wide window at the minimum zoom from drawing an unusable number of cells. */
+const MAX_GRID_CELLS = 6000;
+
+const SELECTED_STYLE = {
+  color: "#e8590c",
+  weight: 1,
+  fillColor: "#fd7e14",
+  fillOpacity: 0.55,
+};
+const UNSELECTED_STYLE = {
+  color: "#868e96",
+  weight: 1,
+  fillColor: "#868e96",
+  fillOpacity: 0.05,
+};
+
+/**
+ * The cell grid for the part of the map in view, with the cells of the shape being edited
+ * highlighted. The grid is built by hand with Leaflet rather than as React elements:
+ * thousands of polygons restyled on every click would be far too slow to re-render.
+ *
+ * The selection lives in `selectionRef` so painting across the map never waits on React.
+ */
+function ShapeEditLayer({
+  selectionRef,
+  revision,
+  paintMode,
+  anchor,
+  onSelectionChange,
+  onGridAvailable,
+}: {
+  selectionRef: React.MutableRefObject<Set<string>>;
+  /** Bumped whenever the parent replaces the selection wholesale. */
+  revision: number;
+  paintMode: boolean;
+  anchor: [number, number];
+  onSelectionChange: (size: number) => void;
+  onGridAvailable: (available: boolean) => void;
+}) {
+  const map = useMap();
+  const polygons = useRef(new Map<string, LeafletPolygon>());
+  const paintModeRef = useRef(paintMode);
+  paintModeRef.current = paintMode;
+
+  const setCell = (cell: string, selected: boolean) => {
+    const selection = selectionRef.current;
+    if (selection.has(cell) === selected) return;
+    if (selected) selection.add(cell);
+    else selection.delete(cell);
+    polygons.current
+      .get(cell)
+      ?.setStyle(selected ? SELECTED_STYLE : UNSELECTED_STYLE);
+    onSelectionChange(selection.size);
+  };
+
+  const restyle = () => {
+    for (const [cell, polygon] of polygons.current) {
+      polygon.setStyle(
+        selectionRef.current.has(cell) ? SELECTED_STYLE : UNSELECTED_STYLE,
+      );
+    }
+  };
+
+  useEffect(() => {
+    map.setView(anchor, Math.max(map.getZoom(), 18));
+    // Only on starting to edit — not whenever the anchor changes after a save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const renderer = canvas({ padding: 0.5 });
+    const group = layerGroup().addTo(map);
+
+    const rebuild = () => {
+      group.clearLayers();
+      polygons.current.clear();
+
+      if (map.getZoom() < MIN_SHAPE_EDIT_ZOOM) {
+        onGridAvailable(false);
+        return;
+      }
+
+      const bounds = map.getBounds();
+      const cells = polygonToCells(
+        [
+          [bounds.getSouth(), bounds.getWest()],
+          [bounds.getNorth(), bounds.getWest()],
+          [bounds.getNorth(), bounds.getEast()],
+          [bounds.getSouth(), bounds.getEast()],
+        ],
+        TIMING_POINT_H3_RESOLUTION,
+      );
+      if (cells.length > MAX_GRID_CELLS) {
+        onGridAvailable(false);
+        return;
+      }
+
+      onGridAvailable(true);
+      for (const cell of cells) {
+        const polygon = leafletPolygon(cellToBoundary(cell), {
+          renderer,
+          bubblingMouseEvents: false,
+          ...(selectionRef.current.has(cell)
+            ? SELECTED_STYLE
+            : UNSELECTED_STYLE),
+        });
+        polygon.on("click", () => {
+          if (paintModeRef.current) return;
+          setCell(cell, !selectionRef.current.has(cell));
+        });
+        polygon.addTo(group);
+        polygons.current.set(cell, polygon);
+      }
+    };
+
+    rebuild();
+    map.on("moveend", rebuild);
+    return () => {
+      map.off("moveend", rebuild);
+      group.remove();
+      polygons.current.clear();
+    };
+    // `setCell` only closes over refs and a stable callback prop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
+
+  useEffect(restyle, [revision]);
+
+  // Painting: dragging across cells sets them all the way the first one was not. Leaflet's
+  // own drag-to-pan has to be switched off for the duration or the map slides about.
+  useEffect(() => {
+    if (!paintMode) return;
+    map.dragging.disable();
+
+    let painting: boolean | null = null; // The state being painted: selected or not.
+    const paint = (latlng: LatLng) => {
+      const cell = latLngToCell(
+        latlng.lat,
+        latlng.lng,
+        TIMING_POINT_H3_RESOLUTION,
+      );
+      if (painting === null) painting = !selectionRef.current.has(cell);
+      setCell(cell, painting);
+    };
+    const onDown = (event: { latlng: LatLng }) => {
+      painting = null;
+      paint(event.latlng);
+    };
+    const onMove = (event: { latlng: LatLng }) => {
+      if (painting !== null) paint(event.latlng);
+    };
+    const stop = () => {
+      painting = null;
+    };
+
+    map.on("mousedown", onDown);
+    map.on("mousemove", onMove);
+    map.on("mouseup", stop);
+    map.getContainer().addEventListener("mouseleave", stop);
+    return () => {
+      map.dragging.enable();
+      map.off("mousedown", onDown);
+      map.off("mousemove", onMove);
+      map.off("mouseup", stop);
+      map.getContainer().removeEventListener("mouseleave", stop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, paintMode]);
+
+  return null;
+}
+
+/** Draws each saved shape as a single outline, holes included, rather than cell by cell. */
+const shapeOutline = (cells: string[]) =>
+  cellsToMultiPolygon(uncompactCells(cells, TIMING_POINT_H3_RESOLUTION), false);
 
 export const MantineProviderWrapper = (props: {
   children: React.ReactNode;
@@ -48,7 +251,9 @@ function NewPointCreator({
   setNewPoint,
   editorPath,
   devices,
+  disabled,
 }: {
+  disabled: boolean;
   newPoint: LatLng | null;
   setNewPoint: (point: LatLng | null) => void;
   editorPath: string;
@@ -64,7 +269,7 @@ function NewPointCreator({
 
   useMapEvents({
     click(e) {
-      setNewPoint(e.latlng);
+      if (!disabled) setNewPoint(e.latlng);
     },
   });
 
@@ -95,7 +300,8 @@ function NewPointCreator({
           }))}
         />
         <NumberInput
-          label="Radius"
+          label="Starting radius"
+          description="The shape starts as a circle this wide — adjust it cell by cell afterwards"
           placeholder="Enter radius in metres"
           name="radius"
           required
@@ -116,10 +322,66 @@ function NewPointCreator({
 export const TimingPointEditor = (props: TimingPointEditorProps) => {
   const { width, height } = useViewportSize();
   const [newPoint, setNewPoint] = useState<LatLng | null>(null);
-  const [editingPoint, setEditingPoint] = useState<
-    TimingPointEditorProps["timingPoints"][0] | null
-  >(null);
+  const [editingPoint, setEditingPoint] = useState<EditorTimingPoint | null>(
+    null,
+  );
   const fetcher = useFetcher();
+
+  // Reshaping a point. The selection itself is in a ref, see `ShapeEditLayer`; the state
+  // here is only what the controls need to show.
+  const shapeFetcher = useFetcher();
+  const [shapeEditing, setShapeEditing] = useState<EditorTimingPoint | null>(
+    null,
+  );
+  const selectionRef = useRef(new Set<string>());
+  const [selectionSize, setSelectionSize] = useState(0);
+  const [selectionRevision, setSelectionRevision] = useState(0);
+  const [paintMode, setPaintMode] = useState(false);
+  const [gridAvailable, setGridAvailable] = useState(false);
+  const [circleRadius, setCircleRadius] = useState<number | string>(40);
+
+  const outlines = useMemo(
+    () =>
+      new Map(
+        props.timingPoints.map((point) => [point.id, shapeOutline(point.cells)]),
+      ),
+    [props.timingPoints],
+  );
+  const cellCount = (point: EditorTimingPoint) =>
+    uncompactCells(point.cells, TIMING_POINT_H3_RESOLUTION).length;
+
+  const startShapeEdit = (point: EditorTimingPoint) => {
+    selectionRef.current = new Set(
+      uncompactCells(point.cells, TIMING_POINT_H3_RESOLUTION),
+    );
+    setSelectionSize(selectionRef.current.size);
+    setSelectionRevision((revision) => revision + 1);
+    setPaintMode(false);
+    setShapeEditing(point);
+  };
+
+  const replaceSelection = (cells: string[]) => {
+    selectionRef.current = new Set(cells);
+    setSelectionSize(selectionRef.current.size);
+    setSelectionRevision((revision) => revision + 1);
+  };
+
+  const shapeSaving = shapeFetcher.state !== "idle";
+  useEffect(() => {
+    if (shapeFetcher.state === "idle" && shapeFetcher.data) {
+      setShapeEditing(null);
+    }
+  }, [shapeFetcher.state, shapeFetcher.data]);
+
+  // Offer the badges already used on a device's points, so they stay spelt the same.
+  const badgesForDevice = (deviceId: number) =>
+    Array.from(
+      new Set(
+        props.timingPoints
+          .filter((point) => point.deviceId === deviceId)
+          .flatMap((point) => point.badges),
+      ),
+    ).sort();
 
   const deviceNameById = (deviceId: number) =>
     props.devices.find((device) => device.id === deviceId)?.name ?? "Unknown";
@@ -166,7 +428,18 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
               setNewPoint={setNewPoint}
               editorPath={props.editorPath}
               devices={props.devices}
+              disabled={shapeEditing !== null}
             />
+            {shapeEditing && (
+              <ShapeEditLayer
+                selectionRef={selectionRef}
+                revision={selectionRevision}
+                paintMode={paintMode}
+                anchor={[shapeEditing.latitude, shapeEditing.longitude]}
+                onSelectionChange={setSelectionSize}
+                onGridAvailable={setGridAvailable}
+              />
+            )}
             <TileLayer
               attribution='Map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -184,10 +457,9 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8" class="leaflet-attribution-flag"><path fill="#4C7BE1" d="M0 0h12v4H0z"></path><path fill="#FFD500" d="M0 4h12v3H0z"></path><path fill="#E0BC00" d="M0 7h12v1H0z"></path></svg> Leaflet
               </a>`}
             />
-            {props.timingPoints.map((pin, index) => (
-              <>
+            {props.timingPoints.map((pin) => (
+              <Fragment key={pin.id}>
                 <Marker
-                  key={index}
                   position={[pin.latitude, pin.longitude]}
                   icon={tablerMapIcon(
                     <ThemeIcon radius="xl" size="sm" color="orange">
@@ -197,17 +469,31 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 >
                   <Popup>
                     <Text>{pin.name}</Text>
-                    <Text>Radius: {pin.radius}m</Text>
+                    <Text>Cells: {cellCount(pin)}</Text>
                     <Text>Device: {deviceNameById(pin.deviceId)}</Text>
                     <Text>Order: {pin.order}</Text>
+                    <Group gap="xs" mt="xs">
+                      <Button size="xs" onClick={() => setEditingPoint(pin)}>
+                        Edit
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        onClick={() => startShapeEdit(pin)}
+                      >
+                        Edit shape
+                      </Button>
+                    </Group>
                   </Popup>
                 </Marker>
-                <Circle
-                  center={[pin.latitude, pin.longitude]}
-                  radius={pin.radius}
-                  pathOptions={{ color: "blue" }}
-                />
-              </>
+                {shapeEditing?.id !== pin.id && (
+                  <Polygon
+                    positions={outlines.get(pin.id) ?? []}
+                    pathOptions={{ color: "blue", weight: 2, fillOpacity: 0.15 }}
+                    interactive={false}
+                  />
+                )}
+              </Fragment>
             ))}
             {uniquePins.length > 0 && (
               <Polyline
@@ -234,6 +520,82 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
             padding: "1rem",
           }}
         >
+          {shapeEditing && (
+            <Paper withBorder p="sm" mb="md">
+              <Stack gap="xs">
+                <Text fw={600}>Shape: {shapeEditing.name}</Text>
+                <Text size="sm">
+                  {selectionSize} cell{selectionSize === 1 ? "" : "s"} selected
+                  {!gridAvailable &&
+                    " — zoom in on the map to pick cells (cells are about 10 m across)"}
+                </Text>
+                <Switch
+                  label="Paint by dragging"
+                  description="Drag across cells to add them, or to remove them if you start on a selected one"
+                  checked={paintMode}
+                  onChange={(event) => setPaintMode(event.currentTarget.checked)}
+                />
+                <Group gap="xs" align="flex-end">
+                  <NumberInput
+                    label="Circle radius (m)"
+                    size="xs"
+                    w={110}
+                    min={1}
+                    value={circleRadius}
+                    onChange={setCircleRadius}
+                  />
+                  <Button
+                    size="xs"
+                    variant="light"
+                    onClick={() =>
+                      replaceSelection(
+                        cellsForCircle(
+                          shapeEditing.latitude,
+                          shapeEditing.longitude,
+                          Number(circleRadius) || 1,
+                        ),
+                      )
+                    }
+                  >
+                    Reset to circle
+                  </Button>
+                </Group>
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    loading={shapeSaving}
+                    disabled={selectionSize === 0}
+                    onClick={() =>
+                      shapeFetcher.submit(
+                        {
+                          intent: "shape",
+                          id: String(shapeEditing.id),
+                          cells: JSON.stringify([...selectionRef.current]),
+                        },
+                        { method: "put", action: props.editorPath },
+                      )
+                    }
+                  >
+                    Save shape
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="default"
+                    onClick={() => replaceSelection([])}
+                  >
+                    Clear
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="default"
+                    onClick={() => setShapeEditing(null)}
+                  >
+                    Cancel
+                  </Button>
+                </Group>
+              </Stack>
+            </Paper>
+          )}
           <List>
             {props.timingPoints.map((point) => (
               <List.Item key={point.id}>
@@ -245,6 +607,13 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                     </Text>
                   </Text>
                   <Button onClick={() => setEditingPoint(point)}>Edit</Button>
+                  <Button
+                    variant="light"
+                    disabled={shapeEditing !== null}
+                    onClick={() => startShapeEdit(point)}
+                  >
+                    Shape
+                  </Button>
                   <fetcher.Form method="delete" action={props.editorPath}>
                     <input type="hidden" name="id" value={point.id} />
                     <Button type="submit" color="red">
@@ -270,14 +639,23 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 defaultValue={editingPoint.name}
               />
               <NumberInput
-                label="Radius"
-                name="radius"
-                defaultValue={editingPoint.radius}
-              />
-              <NumberInput
                 label="Order"
                 name="order"
                 defaultValue={editingPoint.order}
+              />
+              <TagsInput
+                label="Badges"
+                description="Press Enter after each badge, e.g. Blue route"
+                name="badges"
+                defaultValue={editingPoint.badges}
+                data={badgesForDevice(editingPoint.deviceId)}
+              />
+              <Textarea
+                label="Description"
+                name="description"
+                autosize
+                minRows={2}
+                defaultValue={editingPoint.description ?? ""}
               />
               <Select
                 label="Device"

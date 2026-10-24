@@ -2,12 +2,14 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { and, asc, eq, sql } from "drizzle-orm";
 import * as Schema from "~/database/schema.d";
 import { toMillisTimestamp } from "~/utils/dateTime";
+import { timingPointLatLng } from "~/utils/timingPointShape";
 import {
   buildCumulativeDistanceLookup,
   buildLogbook,
   sortLogbookEntries,
   type LogbookEntry,
   type LogbookEvent,
+  type LogbookTimingPoint,
 } from "./buildLogbook";
 import { parseLogbookConfig, type LogbookConfig } from "./config";
 import { loadVoltageRuns } from "./voltageRuns.server";
@@ -89,7 +91,7 @@ export async function loadLogbook(
   // Only the three columns the stationary pass actually needs. The `data` JSON is by far
   // the widest column and none of it is wanted here — voltage is handled separately, and
   // entirely in SQL.
-  const [rows, timingPoints, voltageRuns, remarks] = await Promise.all([
+  const [rows, timingPointRows, timingPointCells, voltageRuns, remarks] = await Promise.all([
     db
       .select({
         timestamp: Schema.Events.timestamp,
@@ -110,11 +112,20 @@ export async function loadLogbook(
       .select({
         id: Schema.TimingPoints.id,
         name: Schema.TimingPoints.name,
-        latitude: Schema.TimingPoints.latitude,
-        longitude: Schema.TimingPoints.longitude,
-        radius: Schema.TimingPoints.radius,
+        anchorCell: Schema.TimingPoints.anchorCell,
       })
       .from(Schema.TimingPoints)
+      .where(eq(Schema.TimingPoints.deviceId, deviceId)),
+    db
+      .select({
+        timingPointId: Schema.TimingPointCells.timingPointId,
+        h3Index: Schema.TimingPointCells.h3Index,
+      })
+      .from(Schema.TimingPointCells)
+      .innerJoin(
+        Schema.TimingPoints,
+        eq(Schema.TimingPoints.id, Schema.TimingPointCells.timingPointId),
+      )
       .where(eq(Schema.TimingPoints.deviceId, deviceId)),
     loadVoltageRuns(db, {
       deviceId,
@@ -147,6 +158,20 @@ export async function loadLogbook(
       latitude: row.latitude,
       longitude: row.longitude,
     }));
+
+  const cellsByTimingPoint = new Map<number, Set<string>>();
+  for (const { timingPointId, h3Index } of timingPointCells) {
+    const cells = cellsByTimingPoint.get(timingPointId) ?? new Set<string>();
+    cells.add(h3Index);
+    cellsByTimingPoint.set(timingPointId, cells);
+  }
+  const timingPoints: LogbookTimingPoint[] = timingPointRows.map(
+    ({ anchorCell, ...timingPoint }) => ({
+      ...timingPoint,
+      ...timingPointLatLng(anchorCell),
+      cells: cellsByTimingPoint.get(timingPoint.id) ?? new Set<string>(),
+    }),
+  );
 
   const builtEntries = buildLogbook({
     events,

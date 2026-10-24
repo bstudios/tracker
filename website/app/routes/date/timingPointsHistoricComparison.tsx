@@ -2,12 +2,18 @@ import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Container, Table, Title } from "@mantine/core";
 import { asc, sql } from "drizzle-orm";
 import { type MetaFunction } from "react-router";
+import {
+  normaliseBadges,
+  TimingPointLabel,
+  type TimingPointLabelProps,
+} from "~/components/TimingPointLabel";
 import { formatTime24 } from "~/utils/dateTime";
 import {
   buildTimingPointMatchCtes,
   parseTimingPointEvents,
   type TimingPointEvent,
 } from "~/utils/timingPointMatches";
+import { timingPointLatLng } from "~/utils/timingPointShape";
 import type { Route } from "./+types/timingPointsHistoricComparison";
 
 export const meta: MetaFunction = () => {
@@ -45,7 +51,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     .from(rankedEvents)
     .where(arrivalOrDepartureOnly)
     .groupBy(
-      rankedEvents.timing_point_id,
+      sql`${rankedEvents.timing_point_id}`,
       rankedEvents.name,
       rankedEvents.order,
       sql`${rankedEvents.date}`,
@@ -59,6 +65,11 @@ export async function loader({ context }: Route.LoaderArgs) {
       id: selectedTimingPoints.id,
       name: selectedTimingPoints.name,
       order: selectedTimingPoints.order,
+      icon: selectedTimingPoints.icon,
+      googleLink: selectedTimingPoints.googleLink,
+      anchorCell: selectedTimingPoints.anchorCell,
+      badges: selectedTimingPoints.badges,
+      description: selectedTimingPoints.description,
     })
     .from(selectedTimingPoints)
     .orderBy(asc(selectedTimingPoints.order));
@@ -78,6 +89,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     {
       name: string;
       order: number;
+      label: TimingPointLabelProps | null;
       byDate: Record<string, TimingPointEvent[]>;
     }
   > = {};
@@ -94,6 +106,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       grouped[row.timing_point_id] = {
         name: row.name,
         order: row.order,
+        label: null,
         byDate: {},
       };
     }
@@ -101,14 +114,33 @@ export async function loader({ context }: Route.LoaderArgs) {
   }
 
   // Ensure timing points with no events are included
+  // and carry everything the location column shows for each one.
   for (const tp of deviceTimingPoints as {
     id: number;
     name: string;
     order: number;
+    icon: string | null;
+    googleLink: string | null;
+    anchorCell: string;
+    badges: unknown;
+    description: string | null;
   }[]) {
     if (!grouped[tp.id]) {
-      grouped[tp.id] = { name: tp.name, order: tp.order, byDate: {} };
+      grouped[tp.id] = {
+        name: tp.name,
+        order: tp.order,
+        label: null,
+        byDate: {},
+      };
     }
+    grouped[tp.id].label = {
+      name: tp.name,
+      icon: tp.icon,
+      googleLink: tp.googleLink,
+      ...timingPointLatLng(tp.anchorCell),
+      badges: normaliseBadges(tp.badges),
+      description: tp.description,
+    };
   }
 
   const rows = Object.entries(grouped)
@@ -117,6 +149,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       timing_point_id: Number(tpId),
       name: info.name,
       order: info.order,
+      label: info.label,
       byDate: info.byDate,
     }));
 
@@ -126,6 +159,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       timing_point_id: number;
       name: string;
       order: number;
+      label: TimingPointLabelProps | null;
       byDate: Record<
         string,
         {
@@ -161,6 +195,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               (row: {
                 timing_point_id: number;
                 name: string;
+                label: TimingPointLabelProps | null;
                 byDate: Record<
                   string,
                   {
@@ -171,7 +206,9 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                 >;
               }) => (
                 <Table.Tr key={row.timing_point_id}>
-                  <Table.Td>{row.name}</Table.Td>
+                  <Table.Td>
+                    {row.label ? <TimingPointLabel {...row.label} /> : row.name}
+                  </Table.Td>
                   {loaderData.dates.flatMap((d: string) => {
                     const events = row.byDate[d] || [];
                     if (events.length === 0)

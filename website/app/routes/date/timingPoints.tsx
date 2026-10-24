@@ -1,13 +1,17 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
-import { Anchor, Container, Group, Table, Title } from "@mantine/core";
-import { IconCoffee, IconGasStation, IconTrain } from "@tabler/icons-react";
+import { Container, Table, Title } from "@mantine/core";
 import { asc, eq, sql } from "drizzle-orm";
-import { Link, type MetaFunction } from "react-router";
+import { type MetaFunction } from "react-router";
+import {
+  normaliseBadges,
+  TimingPointLabel,
+} from "~/components/TimingPointLabel";
 import { formatDurationBetween, formatTime24 } from "~/utils/dateTime";
 import {
   buildTimingPointMatchCtes,
   parseTimingPointEvents,
 } from "~/utils/timingPointMatches";
+import { timingPointLatLng } from "~/utils/timingPointShape";
 import type { Route } from "./+types/timingPoints";
 
 export const meta: MetaFunction = () => {
@@ -39,7 +43,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       })
       .from(rankedEvents)
       .where(arrivalOrDepartureOnly)
-      .groupBy(rankedEvents.timing_point_id),
+      .groupBy(sql`${rankedEvents.timing_point_id}`),
   );
 
   // Return all of the device's timing points, including those nothing matched today, so
@@ -52,8 +56,9 @@ export async function loader({ context }: Route.LoaderArgs) {
       order: selectedTimingPoints.order,
       icon: selectedTimingPoints.icon,
       googleLink: selectedTimingPoints.googleLink,
-      latitude: selectedTimingPoints.timing_point_latitude,
-      longitude: selectedTimingPoints.timing_point_longitude,
+      badges: selectedTimingPoints.badges,
+      description: selectedTimingPoints.description,
+      anchorCell: selectedTimingPoints.anchorCell,
       events: sql<string>`coalesce(${aggregatedEvents.events}, '[]')`.as(
         "events",
       ),
@@ -66,13 +71,18 @@ export async function loader({ context }: Route.LoaderArgs) {
     .orderBy(asc(selectedTimingPoints.order));
 
   return {
-    timingPoints: timingPointsWithEvents as {
+    timingPoints: timingPointsWithEvents.map(({ anchorCell, ...timingPoint }) => ({
+      ...timingPoint,
+      ...timingPointLatLng(anchorCell),
+    })) as {
       timing_point_id: number;
       name: string;
       order: number;
       events: string;
       icon: string | null;
       googleLink: string | null;
+      badges: unknown;
+      description: string | null;
       latitude: number;
       longitude: number;
     }[],
@@ -101,26 +111,15 @@ export default function Page({ loaderData }: Route.ComponentProps) {
               return (
                 <Table.Tr key={timingPoint.timing_point_id}>
                   <Table.Td>
-                    <Group justify="flex-start">
-                      {timingPoint.icon === "IconCoffee" ? (
-                        <IconCoffee />
-                      ) : timingPoint.icon === "IconGasStation" ? (
-                        <IconGasStation />
-                      ) : timingPoint.icon === "IconTrain" ? (
-                        <IconTrain />
-                      ) : null}
-                      <Anchor
-                        c="inherit"
-                        component={Link}
-                        to={
-                          timingPoint.googleLink ??
-                          `https://www.google.com/maps?q=${timingPoint.latitude},${timingPoint.longitude}`
-                        }
-                        target="_blank"
-                      >
-                        {timingPoint.name}
-                      </Anchor>
-                    </Group>
+                    <TimingPointLabel
+                      name={timingPoint.name}
+                      icon={timingPoint.icon}
+                      googleLink={timingPoint.googleLink}
+                      latitude={timingPoint.latitude}
+                      longitude={timingPoint.longitude}
+                      badges={normaliseBadges(timingPoint.badges)}
+                      description={timingPoint.description}
+                    />
                   </Table.Td>
                   {events.length === 0 && <Table.Td colSpan={2}></Table.Td>}
                   {events.length === 1 && events[0].type === "passage" && (

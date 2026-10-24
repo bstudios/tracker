@@ -4,6 +4,7 @@ import { z as zod } from "zod";
 import { Events } from "~/database/schema/Events";
 import type { Route } from "./+types/traccarUpload";
 import { getH3IndexForLocation, toUtcDateString } from "~/utils/h3";
+import { timingPointCellForLocation } from "~/utils/timingPointShape";
 
 const getRequestParameters = zod.compile(
   zod.object({
@@ -84,6 +85,7 @@ export const loader = async ({ context, request }: Route.LoaderArgs) => {
         latitude,
         longitude,
         h3Index: getH3IndexForLocation(latitude, longitude),
+        h3Cell: timingPointCellForLocation(latitude, longitude),
         deviceId: 1, // TODO: This should be the device ID that is associated with the API key that was used to authenticate this request.
         data: {
           location: {

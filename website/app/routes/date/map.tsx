@@ -5,6 +5,7 @@ import { isRouteErrorResponse, Link, type MetaFunction } from "react-router";
 import { LiveMap } from "~/components/LiveMap/LiveMap";
 import * as Schema from "~/database/schema.d";
 import { formatUtcDay } from "~/utils/dateTime";
+import { timingPointLatLng } from "~/utils/timingPointShape";
 import type { Route } from "./+types/map";
 
 export const meta: MetaFunction = () => {
@@ -41,8 +42,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     db
       .select({
         name: Schema.TimingPoints.name,
-        latitude: Schema.TimingPoints.latitude,
-        longitude: Schema.TimingPoints.longitude,
+        anchorCell: Schema.TimingPoints.anchorCell,
         group: Schema.TimingPoints.group,
         icon: Schema.TimingPoints.icon,
         googleLink: Schema.TimingPoints.googleLink,
@@ -54,7 +54,10 @@ export async function loader({ context }: Route.LoaderArgs) {
   return {
     events,
     urlDate,
-    timingPoints,
+    timingPoints: timingPoints.map(({ anchorCell, ...timingPoint }) => ({
+      ...timingPoint,
+      ...timingPointLatLng(anchorCell),
+    })),
     password,
     deviceIcon: device?.icon ?? null,
   };
