@@ -11,9 +11,15 @@ export type EditorTimingPoint = InferSelectModel<typeof Schema.TimingPoints> & {
   cells: string[];
 };
 export interface TimingPointEditorProps {
+  device: { id: number; name: string };
+  /** The day whose track is drawn under the timing points. */
+  urlDate: string;
+  /** Days this device has a track for, newest first. */
+  availableDates: string[];
+  /** The editor's path without a date, to switch to another day. */
+  editorBasePath: string;
   editorPath: string;
   timingPoints: EditorTimingPoint[];
-  devices: { id: number; name: string }[];
   pins: {
     latitude: number;
     longitude: number;

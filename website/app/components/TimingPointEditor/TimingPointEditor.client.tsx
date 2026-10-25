@@ -4,6 +4,7 @@ import {
   List,
   MantineProvider,
   Modal,
+  Notification,
   NumberInput,
   Paper,
   Select,
@@ -16,7 +17,12 @@ import {
   ThemeIcon,
 } from "@mantine/core";
 import { useViewportSize } from "@mantine/hooks";
-import { IconPinned, IconTrash } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconCheck,
+  IconPinned,
+  IconTrash,
+} from "@tabler/icons-react";
 import {
   cellsToMultiPolygon,
   cellToBoundary,
@@ -47,7 +53,7 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
-import { useFetcher } from "react-router";
+import { Link, useFetcher, useNavigate } from "react-router";
 import { TIMING_POINT_H3_RESOLUTION } from "~/constants/h3";
 import { theme } from "~/root";
 import { cellsForCircle } from "~/utils/timingPointShape";
@@ -329,22 +335,25 @@ function NewPointCreator({
   newPoint,
   setNewPoint,
   editorPath,
-  devices,
   disabled,
+  onSaved,
 }: {
   disabled: boolean;
   newPoint: LatLng | null;
   setNewPoint: (point: LatLng | null) => void;
   editorPath: string;
-  devices: TimingPointEditorProps["devices"];
+  onSaved: (message: string) => void;
 }) {
   const fetcher = useFetcher();
 
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data) {
       setNewPoint(null);
+      onSaved("Timing point created");
     }
-  }, [fetcher.state, fetcher.data, setNewPoint]);
+    // Only when a submission settles, not whenever the callbacks change identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
 
   useMapEvents({
     click(e) {
@@ -367,17 +376,6 @@ function NewPointCreator({
           name="name"
           required
         />
-        <Select
-          label="Device"
-          placeholder="Select the device this timing point belongs to"
-          name="deviceId"
-          required
-          defaultValue={devices[0] ? String(devices[0].id) : null}
-          data={devices.map((device) => ({
-            value: String(device.id),
-            label: device.name,
-          }))}
-        />
         <NumberInput
           label="Starting radius"
           description="The shape starts as a circle this wide — adjust it cell by cell afterwards"
@@ -390,7 +388,7 @@ function NewPointCreator({
         />
         <input type="hidden" name="latitude" value={newPoint.lat} />
         <input type="hidden" name="longitude" value={newPoint.lng} />
-        <Button type="submit" mt="md">
+        <Button type="submit" mt="md" loading={fetcher.state !== "idle"}>
           Create
         </Button>
       </fetcher.Form>
@@ -405,6 +403,38 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
     null,
   );
   const fetcher = useFetcher();
+  const editFetcher = useFetcher();
+  const navigate = useNavigate();
+
+  // A brief confirmation once something has saved — the map alone gives no sign of it.
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showNotice = (message: string) => {
+    setNotice(message);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 3000);
+  };
+  useEffect(
+    () => () => {
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (editFetcher.state === "idle" && editFetcher.data) {
+      setEditingPoint(null);
+      showNotice("Timing point saved");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editFetcher.state, editFetcher.data]);
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      showNotice("Timing point deleted");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
 
   // Reshaping a point. The selection itself is in a ref, see `ShapeEditLayer`; the state
   // here is only what the controls need to show.
@@ -450,21 +480,19 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
   useEffect(() => {
     if (shapeFetcher.state === "idle" && shapeFetcher.data) {
       setShapeEditing(null);
+      showNotice("Shape saved");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shapeFetcher.state, shapeFetcher.data]);
 
-  // Offer the badges already used on a device's points, so they stay spelt the same.
-  const badgesForDevice = (deviceId: number) =>
-    Array.from(
-      new Set(
-        props.timingPoints
-          .filter((point) => point.deviceId === deviceId)
-          .flatMap((point) => point.badges),
-      ),
-    ).sort();
-
-  const deviceNameById = (deviceId: number) =>
-    props.devices.find((device) => device.id === deviceId)?.name ?? "Unknown";
+  // Offer the badges already used on this device's points, so they stay spelt the same.
+  const existingBadges = useMemo(
+    () =>
+      Array.from(
+        new Set(props.timingPoints.flatMap((point) => point.badges)),
+      ).sort(),
+    [props.timingPoints],
+  );
 
   const uniquePins = Object.values(
     props.pins.reduce((acc, pin) => {
@@ -507,8 +535,8 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
               newPoint={newPoint}
               setNewPoint={setNewPoint}
               editorPath={props.editorPath}
-              devices={props.devices}
               disabled={shapeEditing !== null}
+              onSaved={showNotice}
             />
             {shapeEditing && (
               <ShapeEditLayer
@@ -551,7 +579,6 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                   <Popup>
                     <Text>{pin.name}</Text>
                     <Text>Cells: {cellCount(pin)}</Text>
-                    <Text>Device: {deviceNameById(pin.deviceId)}</Text>
                     <Text>Order: {pin.order}</Text>
                     <Group gap="xs" mt="xs">
                       <Button size="xs" onClick={() => setEditingPoint(pin)}>
@@ -601,6 +628,38 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
             padding: "1rem",
           }}
         >
+          <Stack gap="xs" mb="md">
+            <Button
+              component={Link}
+              to="/admin"
+              variant="subtle"
+              size="xs"
+              leftSection={<IconArrowLeft size={14} />}
+              style={{ alignSelf: "flex-start" }}
+            >
+              Admin
+            </Button>
+            <Text fw={600} size="lg">
+              {props.device.name} timing points
+            </Text>
+            <Select
+              label="Track shown on the map"
+              size="xs"
+              allowDeselect={false}
+              value={props.urlDate}
+              data={
+                props.availableDates.includes(props.urlDate)
+                  ? props.availableDates
+                  : [props.urlDate, ...props.availableDates]
+              }
+              onChange={(date) => {
+                if (date) navigate(`${props.editorBasePath}/${date}`);
+              }}
+            />
+            <Text size="xs" c="dimmed">
+              Click the map to add a timing point
+            </Text>
+          </Stack>
           {shapeEditing && (
             <Paper withBorder p="sm" mb="md">
               <Stack gap="xs">
@@ -693,12 +752,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
             {props.timingPoints.map((point) => (
               <List.Item key={point.id}>
                 <Group>
-                  <Text>
-                    {point.name}{" "}
-                    <Text span c="dimmed" size="xs">
-                      ({deviceNameById(point.deviceId)})
-                    </Text>
-                  </Text>
+                  <Text>{point.name}</Text>
                   <Button onClick={() => setEditingPoint(point)}>Edit</Button>
                   <Button
                     variant="light"
@@ -724,7 +778,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
             onClose={() => setEditingPoint(null)}
             title="Edit Timing Point"
           >
-            <fetcher.Form method="put" action={props.editorPath}>
+            <editFetcher.Form method="put" action={props.editorPath}>
               <input type="hidden" name="id" value={editingPoint.id} />
               <TextInput
                 label="Name"
@@ -741,7 +795,7 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 description="Press Enter after each badge, e.g. Blue route"
                 name="badges"
                 defaultValue={editingPoint.badges}
-                data={badgesForDevice(editingPoint.deviceId)}
+                data={existingBadges}
               />
               <Textarea
                 label="Description"
@@ -750,19 +804,32 @@ export const TimingPointEditor = (props: TimingPointEditorProps) => {
                 minRows={2}
                 defaultValue={editingPoint.description ?? ""}
               />
-              <Select
-                label="Device"
-                name="deviceId"
-                required
-                defaultValue={String(editingPoint.deviceId)}
-                data={props.devices.map((device) => ({
-                  value: String(device.id),
-                  label: device.name,
-                }))}
-              />
-              <Button type="submit">Save</Button>
-            </fetcher.Form>
+              <Button
+                type="submit"
+                mt="md"
+                loading={editFetcher.state !== "idle"}
+              >
+                Save
+              </Button>
+            </editFetcher.Form>
           </Modal>
+        )}
+        {notice && (
+          <Notification
+            icon={<IconCheck size={18} />}
+            color="teal"
+            withBorder
+            onClose={() => setNotice(null)}
+            style={{
+              position: "fixed",
+              bottom: "1rem",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 1000,
+            }}
+          >
+            {notice}
+          </Notification>
         )}
       </div>
     );

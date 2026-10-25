@@ -35,7 +35,10 @@ export default [
     route("devices/:deviceId/logbook", "./routes/admin/deviceLogbook.tsx"),
     route("passwords", "./routes/admin/passwords.tsx"),
     route("data", "./routes/admin/data.tsx"),
-    route(":date?/timingPointEditor", "./routes/admin/timingPointEditor.tsx"),
+    route(
+      "devices/:deviceId/timingPoints/:date?",
+      "./routes/admin/timingPointEditor.tsx",
+    ),
     route("generateDummyDataLocally", "./routes/generateDummy.tsx"),
   ]),
 ] satisfies RouteConfig;

@@ -1,7 +1,6 @@
 import { getCloudflareContext, getDb } from "~/routeContext";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { DateTime } from "luxon";
-import { type MetaFunction } from "react-router";
 import { TimingPointEditor } from "~/components/TimingPointEditor/TimingPointEditor";
 import * as Schema from "~/database/schema.d";
 import { compactCells, getResolution, isValidCell } from "h3-js";
@@ -24,29 +23,22 @@ const invalidateArchive = (
   deviceId: number,
 ) => invalidateLogbookArchive(getCloudflareContext(context).env, deviceId);
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Timing Point Editor" }];
+export const meta: Route.MetaFunction = ({ loaderData }) => {
+  return [
+    {
+      title: loaderData
+        ? `Timing Points – ${loaderData.device.name}`
+        : "Timing Point Editor",
+    },
+  ];
 };
 
-const parseDeviceIdInput = async (
-  db: ReturnType<typeof getDb>,
-  rawDeviceId: FormDataEntryValue | null,
-) => {
-  const deviceId = parseInt(rawDeviceId as string);
-  if (!Number.isFinite(deviceId)) {
-    throw new Error("A device must be selected for the timing point.");
+const parseDeviceIdParam = (rawId: string | undefined) => {
+  const id = Number(rawId);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Response("Not found", { status: 404 });
   }
-
-  const [device] = await db
-    .select({ id: Schema.Devices.id })
-    .from(Schema.Devices)
-    .where(eq(Schema.Devices.id, deviceId))
-    .limit(1);
-  if (!device) {
-    throw new Error("The selected device does not exist.");
-  }
-
-  return device.id;
+  return id;
 };
 
 const parseBadgesInput = (raw: FormDataEntryValue | null) =>
@@ -83,10 +75,36 @@ const parseCellsInput = (raw: FormDataEntryValue | null) => {
 
 export async function loader({ context, params }: Route.LoaderArgs) {
   const db = getDb(context);
+  const deviceId = parseDeviceIdParam(params.deviceId);
 
+  const [device] = await db
+    .select({ id: Schema.Devices.id, name: Schema.Devices.name })
+    .from(Schema.Devices)
+    .where(eq(Schema.Devices.id, deviceId))
+    .limit(1);
+  if (!device) {
+    throw new Response("Device not found", { status: 404 });
+  }
+
+  // The days this device has a track for, so one can be drawn under the timing points.
+  const availableDates = (
+    await db
+      .select({ date: Schema.Events.dateString })
+      .from(Schema.Events)
+      .where(eq(Schema.Events.deviceId, deviceId))
+      .groupBy(Schema.Events.dateString)
+      .orderBy(desc(Schema.Events.dateString))
+  ).map((row) => row.date);
+
+  // Without a date, show the device's most recent track.
   let refDate = params.date
     ? DateTime.fromFormat(params.date, "yyyy-MM-dd", { zone: "utc" })
-    : DateTime.now().toUTC();
+    : availableDates[0]
+      ? DateTime.fromFormat(availableDates[0], "yyyy-MM-dd", { zone: "utc" })
+      : DateTime.now().toUTC();
+  if (!refDate.isValid) {
+    throw new Response("Not found", { status: 404 });
+  }
   refDate = refDate.set({ hour: 0, minute: 0, second: 0, millisecond: 0 });
   const urlDate = refDate.toFormat("yyyy-MM-dd");
 
@@ -98,12 +116,28 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     })
     .from(Schema.Events)
     .orderBy(desc(Schema.Events.timestamp))
-    .where(and(eq(Schema.Events.dateString, urlDate)));
+    .where(
+      and(
+        eq(Schema.Events.deviceId, deviceId),
+        eq(Schema.Events.dateString, urlDate),
+      ),
+    );
   const timingPointRows = await db
     .select()
     .from(Schema.TimingPoints)
+    .where(eq(Schema.TimingPoints.deviceId, deviceId))
     .orderBy(asc(Schema.TimingPoints.order));
-  const cellRows = await db.select().from(Schema.TimingPointCells);
+  const cellRows = await db
+    .select({
+      timingPointId: Schema.TimingPointCells.timingPointId,
+      h3Index: Schema.TimingPointCells.h3Index,
+    })
+    .from(Schema.TimingPointCells)
+    .innerJoin(
+      Schema.TimingPoints,
+      eq(Schema.TimingPoints.id, Schema.TimingPointCells.timingPointId),
+    )
+    .where(eq(Schema.TimingPoints.deviceId, deviceId));
   const cellsByTimingPoint = new Map<number, string[]>();
   for (const { timingPointId, h3Index } of cellRows) {
     cellsByTimingPoint.set(timingPointId, [
@@ -118,23 +152,43 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     ...timingPointLatLng(timingPoint.anchorCell),
     cells: compactCells(cellsByTimingPoint.get(timingPoint.id) ?? []),
   }));
-  const devices = await db
-    .select({ id: Schema.Devices.id, name: Schema.Devices.name })
-    .from(Schema.Devices)
-    .orderBy(asc(Schema.Devices.name));
 
   return {
-    date: refDate.toISO(),
+    device,
     events,
     urlDate,
-    editorPath: `/admin/${urlDate}/timingPointEditor`,
+    availableDates,
+    editorBasePath: `/admin/devices/${deviceId}/timingPoints`,
+    editorPath: `/admin/devices/${deviceId}/timingPoints/${urlDate}`,
     timingPoints,
-    devices,
   };
 }
 
-export async function action({ context, request }: Route.ActionArgs) {
+/** The point being changed, as long as it belongs to the device whose page this is. */
+const findDeviceTimingPoint = async (
+  db: ReturnType<typeof getDb>,
+  deviceId: number,
+  rawId: FormDataEntryValue | null,
+) => {
+  const [timingPoint] = await db
+    .select({ id: Schema.TimingPoints.id })
+    .from(Schema.TimingPoints)
+    .where(
+      and(
+        eq(Schema.TimingPoints.id, parseInt(rawId as string)),
+        eq(Schema.TimingPoints.deviceId, deviceId),
+      ),
+    )
+    .limit(1);
+  if (!timingPoint) {
+    throw new Error("Timing point not found");
+  }
+  return timingPoint.id;
+};
+
+export async function action({ context, params, request }: Route.ActionArgs) {
   const db = getDb(context);
+  const deviceId = parseDeviceIdParam(params.deviceId);
   const formData = await request.formData();
 
   if (request.method === "POST") {
@@ -142,7 +196,15 @@ export async function action({ context, request }: Route.ActionArgs) {
     const latitude = parseFloat(formData.get("latitude") as string);
     const longitude = parseFloat(formData.get("longitude") as string);
     const radius = parseInt(formData.get("radius") as string);
-    const deviceId = await parseDeviceIdInput(db, formData.get("deviceId"));
+
+    const [device] = await db
+      .select({ id: Schema.Devices.id })
+      .from(Schema.Devices)
+      .where(eq(Schema.Devices.id, deviceId))
+      .limit(1);
+    if (!device) {
+      throw new Error("The device does not exist.");
+    }
 
     // A new point starts as a circle around where it was placed; its shape is then
     // adjusted cell by cell.
@@ -159,39 +221,20 @@ export async function action({ context, request }: Route.ActionArgs) {
     await invalidateArchive(context, deviceId);
     return { created: newTimingPoint.id };
   } else if (request.method === "DELETE") {
-    const id = parseInt(formData.get("id") as string);
-    // Read the owner before the row goes, so we know whose archive to drop.
-    const [doomed] = await db
-      .select({ deviceId: Schema.TimingPoints.deviceId })
-      .from(Schema.TimingPoints)
-      .where(eq(Schema.TimingPoints.id, id))
-      .limit(1);
+    const id = await findDeviceTimingPoint(db, deviceId, formData.get("id"));
     await db
       .delete(Schema.TimingPointCells)
       .where(eq(Schema.TimingPointCells.timingPointId, id));
     await db.delete(Schema.TimingPoints).where(eq(Schema.TimingPoints.id, id));
-    if (doomed) await invalidateArchive(context, doomed.deviceId);
+    await invalidateArchive(context, deviceId);
     return { success: true };
   } else if (request.method === "PUT") {
-    const id = parseInt(formData.get("id") as string);
-
-    const [existingTimingPoint] = await db
-      .select({
-        id: Schema.TimingPoints.id,
-        deviceId: Schema.TimingPoints.deviceId,
-      })
-      .from(Schema.TimingPoints)
-      .where(eq(Schema.TimingPoints.id, id))
-      .limit(1);
-
-    if (!existingTimingPoint) {
-      throw new Error("Timing point not found");
-    }
+    const id = await findDeviceTimingPoint(db, deviceId, formData.get("id"));
 
     // Reshaping is its own request so the details form never has to carry the cells.
     if (formData.get("intent") === "shape") {
       await saveTimingPointCells(db, id, parseCellsInput(formData.get("cells")));
-      await invalidateArchive(context, existingTimingPoint.deviceId);
+      await invalidateArchive(context, deviceId);
       return { success: true };
     }
 
@@ -199,19 +242,13 @@ export async function action({ context, request }: Route.ActionArgs) {
     const order = parseInt(formData.get("order") as string);
     const badges = parseBadgesInput(formData.get("badges"));
     const description = parseDescriptionInput(formData.get("description"));
-    const deviceId = await parseDeviceIdInput(db, formData.get("deviceId"));
 
     await db
       .update(Schema.TimingPoints)
-      .set({ name, order, deviceId, badges, description })
+      .set({ name, order, badges, description })
       .where(eq(Schema.TimingPoints.id, id));
 
-    // A point can be reassigned between devices, so both archives are now suspect.
     await invalidateArchive(context, deviceId);
-    if (existingTimingPoint.deviceId !== deviceId) {
-      await invalidateArchive(context, existingTimingPoint.deviceId);
-    }
-
     return { success: true };
   }
 }
@@ -219,9 +256,14 @@ export async function action({ context, request }: Route.ActionArgs) {
 export default function Page({ loaderData }: Route.ComponentProps) {
   return (
     <TimingPointEditor
+      // Remount on a new day so the map recentres on that day's track.
+      key={loaderData.urlDate}
+      device={loaderData.device}
+      urlDate={loaderData.urlDate}
+      availableDates={loaderData.availableDates}
+      editorBasePath={loaderData.editorBasePath}
       editorPath={loaderData.editorPath}
       timingPoints={loaderData.timingPoints}
-      devices={loaderData.devices}
       pins={loaderData.events.map((event) => ({
         latitude: event.latitude,
         longitude: event.longitude,
