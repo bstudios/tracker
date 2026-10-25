@@ -1,0 +1,39 @@
+.printOnly {
+  display: none;
+}
+
+@media print {
+  .hideInPrint {
+    display: none !important;
+  }
+
+  .printOnly {
+    display: block;
+    color: #000;
+  }
+
+  /* Print in light colours whatever the screen's colour scheme, as the page background is not printed. */
+  table.printTable {
+    --mantine-color-text: #000;
+    --mantine-color-dimmed: var(--mantine-color-gray-7);
+    --table-striped-color: var(--mantine-color-gray-0);
+    --table-border-color: var(--mantine-color-gray-3);
+    color: #000;
+    background-color: #fff;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+
+    thead {
+      /* Repeat the header on every page rather than sticking it to the top of the first. */
+      position: static;
+      display: table-header-group;
+    }
+
+    tr,
+    td,
+    th {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+  }
+}
