@@ -1,7 +1,8 @@
 import { getDb, getPasswordRouteAccess } from "~/routeContext";
 import { Container, Table, Title } from "@mantine/core";
 import { asc, eq, sql } from "drizzle-orm";
-import { type MetaFunction } from "react-router";
+import printClasses from "~/components/Print.module.css";
+import * as Schema from "~/database/schema.d";
 import {
   normaliseBadges,
   TimingPointLabel,
@@ -14,14 +15,23 @@ import {
 import { timingPointLatLng } from "~/utils/timingPointShape";
 import type { Route } from "./+types/timingPoints";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Timing Points" }];
+const pageTitle = (loaderData: { deviceName: string; date: string }) =>
+  `${loaderData.deviceName} – Timing points – ${loaderData.date}`;
+
+export const meta = ({ loaderData }: Route.MetaArgs) => {
+  return [{ title: loaderData ? pageTitle(loaderData) : "Timing Points" }];
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
   const db = getDb(context);
 
   const { urlDate, password, deviceId } = getPasswordRouteAccess(context);
+
+  const [device] = await db
+    .select({ name: Schema.Devices.name })
+    .from(Schema.Devices)
+    .where(eq(Schema.Devices.id, deviceId))
+    .limit(1);
 
   const {
     ctes,
@@ -88,16 +98,26 @@ export async function loader({ context }: Route.LoaderArgs) {
     }[],
     date: urlDate,
     password,
+    deviceName: device?.name ?? "",
   };
 }
 
 export default function Page({ loaderData }: Route.ComponentProps) {
   return (
     <Container fluid p={"md"}>
+      <Title order={2} mb="md" className={printClasses.printOnly}>
+        {pageTitle(loaderData)}
+      </Title>
       {loaderData.timingPoints.length === 0 ? (
         <Title>No data available</Title>
       ) : (
-        <Table striped highlightOnHover stickyHeader stickyHeaderOffset={0}>
+        <Table
+          striped
+          highlightOnHover
+          stickyHeader
+          stickyHeaderOffset={0}
+          className={printClasses.printTable}
+        >
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Location</Table.Th>

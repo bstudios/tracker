@@ -1,6 +1,7 @@
 import { Container } from "@mantine/core";
 import { Outlet, useLocation, useParams } from "react-router";
 import { DatePageNav, type DatePage } from "~/components/DatePageNav";
+import printClasses from "~/components/Print.module.css";
 import { passwordRouteAccessMiddleware } from "~/middleware/passwordRouteAccess.server";
 import type { Route } from "./+types/protectedLayout";
 
@@ -44,7 +45,7 @@ export default function ProtectedLayout() {
   return (
     <>
       {!hide && (
-        <Container fluid p="md" pb={0}>
+        <Container fluid p="md" pb={0} className={printClasses.hideInPrint}>
           <DatePageNav
             password={password}
             urlDate={urlDate}
