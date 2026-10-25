@@ -1,6 +1,6 @@
 import { getDb } from "~/routeContext";
 import { Button, Container, Stack, Text, Title } from "@mantine/core";
-import { desc } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import { Link, type MetaFunction } from "react-router";
 import * as Schema from "~/database/schema.d";
 import type { Route } from "./+types/index";
@@ -10,15 +10,12 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const availableDateRows = await getDb(context)
-    .select({
-      date: Schema.Events.dateString,
-    })
-    .from(Schema.Events)
-    .groupBy(Schema.Events.dateString)
-    .orderBy(desc(Schema.Events.dateString));
+  const devices = await getDb(context)
+    .select({ id: Schema.Devices.id, name: Schema.Devices.name })
+    .from(Schema.Devices)
+    .orderBy(asc(Schema.Devices.name));
 
-  return { availableDateRows };
+  return { devices };
 }
 
 export default function Page({ loaderData }: Route.ComponentProps) {
@@ -38,20 +35,20 @@ export default function Page({ loaderData }: Route.ComponentProps) {
       </Stack>
 
       <Title order={2} mt="xl" mb="sm">
-        Timing point editor by date
+        Timing point editor by device
       </Title>
-      {loaderData.availableDateRows.length === 0 ? (
-        <Text c="dimmed">No data available yet</Text>
+      {loaderData.devices.length === 0 ? (
+        <Text c="dimmed">No devices set up yet</Text>
       ) : (
         <Stack>
-          {loaderData.availableDateRows.map((row) => (
+          {loaderData.devices.map((device) => (
             <Button
-              key={row.date}
+              key={device.id}
               component={Link}
-              to={`/admin/${row.date}/timingPointEditor`}
+              to={`/admin/devices/${device.id}/timingPoints`}
               variant="light"
             >
-              {row.date}
+              {device.name}
             </Button>
           ))}
         </Stack>

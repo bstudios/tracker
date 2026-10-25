@@ -496,6 +496,13 @@ export default function Page({ loaderData }: Route.ComponentProps) {
                     >
                       Logbook
                     </Button>
+                    <Button
+                      component={Link}
+                      to={`/admin/devices/${device.id}/timingPoints`}
+                      variant="light"
+                    >
+                      Timing points
+                    </Button>
                   </Group>
                 </Table.Td>
               </Table.Tr>
