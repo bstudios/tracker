@@ -28,7 +28,14 @@ const normalizedMessageSchema = zod.compile(
   }),
 );
 
-const INSERT_CHUNK_SIZE = 200;
+// D1 allows 100 bound parameters per statement. Each event row binds eight (timestamp,
+// date_string, latitude, longitude, h3_index, h3_cell, data, device_id), so 12 rows is the
+// most that fits in one insert.
+const D1_MAX_BOUND_PARAMETERS = 100;
+const BOUND_PARAMETERS_PER_EVENT = 8;
+const INSERT_CHUNK_SIZE = Math.floor(
+  D1_MAX_BOUND_PARAMETERS / BOUND_PARAMETERS_PER_EVENT,
+);
 
 const getValueForKey = (source: Record<string, unknown>, key: string) => {
   if (key in source) return source[key];
