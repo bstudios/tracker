@@ -35,6 +35,7 @@ import {
 } from "@tabler/icons-react";
 import { DivIcon, divIcon, LatLng } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "../leafletRemovedMapGuard.client";
 import { DateTime } from "luxon";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";

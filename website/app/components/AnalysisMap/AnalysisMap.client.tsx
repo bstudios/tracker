@@ -1,6 +1,7 @@
 import { MantineProvider, ThemeIcon } from "@mantine/core";
 import { divIcon } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "../leafletRemovedMapGuard.client";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
