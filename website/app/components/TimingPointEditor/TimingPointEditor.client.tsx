@@ -40,6 +40,7 @@ import {
   type Polygon as LeafletPolygon,
 } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "../leafletRemovedMapGuard.client";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {

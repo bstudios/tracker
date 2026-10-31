@@ -1,4 +1,5 @@
 import "leaflet/dist/leaflet.css";
+import "../leafletRemovedMapGuard.client";
 import { cellToBoundary } from "h3-js";
 import type { ReactNode } from "react";
 import { MapContainer, Polygon, Popup, TileLayer } from "react-leaflet";
