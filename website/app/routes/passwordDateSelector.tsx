@@ -1,10 +1,9 @@
 import { getDb } from "~/routeContext";
 import { Accordion, Button, Container, Stack, Title } from "@mantine/core";
-import { desc, eq } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { redirect, useNavigate, type MetaFunction } from "react-router";
 import { findPasswordAccessWithRateLimit } from "~/passwordAccess.server";
-import * as Schema from "~/database/schema.d";
+import { getAvailableDates } from "~/utils/availableDates.server";
 import type { Route } from "./+types/passwordDateSelector";
 
 export const meta: MetaFunction = () => {
@@ -33,21 +32,15 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     );
   }
 
-  const availableDateRows = await getDb(context)
-    .select({
-      date: Schema.Events.dateString,
-    })
-    .from(Schema.Events)
-    .where(eq(Schema.Events.deviceId, accessConfig.deviceId))
-    .groupBy(Schema.Events.dateString)
-    .orderBy(desc(Schema.Events.dateString));
+  const deviceDates = await getAvailableDates(
+    getDb(context),
+    accessConfig.deviceId,
+  );
 
   const availableDates =
     accessConfig.allowedDates === null
-      ? availableDateRows.map((row) => row.date)
-      : availableDateRows
-          .map((row) => row.date)
-          .filter((date) => accessConfig.allowedDates?.includes(date));
+      ? deviceDates
+      : deviceDates.filter((date) => accessConfig.allowedDates?.includes(date));
 
   return {
     password: accessConfig.password,

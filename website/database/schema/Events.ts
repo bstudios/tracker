@@ -8,7 +8,12 @@ import {
 import { Devices } from "./Devices";
 
 export type JsonValue =
-  string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[];
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: JsonValue }
+  | JsonValue[];
 
 export const Events = sqliteTable(
   "events",
@@ -46,12 +51,6 @@ export const Events = sqliteTable(
       .references(() => Devices.id),
   },
   (table) => [
-    index("h3_idx").on(table.h3Index),
-    index("device_dateString_h3_idx").on(
-      table.deviceId,
-      table.dateString,
-      table.h3Index,
-    ),
     index("device_h3Cell_dateString_idx").on(
       table.deviceId,
       table.h3Cell,
