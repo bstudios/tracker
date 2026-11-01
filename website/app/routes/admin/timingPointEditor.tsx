@@ -6,6 +6,7 @@ import * as Schema from "~/database/schema.d";
 import { compactCells, getResolution, isValidCell } from "h3-js";
 import { TIMING_POINT_H3_RESOLUTION } from "~/constants/h3";
 import { saveTimingPointCells } from "~/utils/timingPointCells.server";
+import { getAvailableDates } from "~/utils/availableDates.server";
 import {
   anchorCellForCells,
   cellsForCircle,
@@ -87,14 +88,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
   }
 
   // The days this device has a track for, so one can be drawn under the timing points.
-  const availableDates = (
-    await db
-      .select({ date: Schema.Events.dateString })
-      .from(Schema.Events)
-      .where(eq(Schema.Events.deviceId, deviceId))
-      .groupBy(Schema.Events.dateString)
-      .orderBy(desc(Schema.Events.dateString))
-  ).map((row) => row.date);
+  const availableDates = await getAvailableDates(db, deviceId);
 
   // Without a date, show the device's most recent track.
   let refDate = params.date
@@ -233,7 +227,11 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 
     // Reshaping is its own request so the details form never has to carry the cells.
     if (formData.get("intent") === "shape") {
-      await saveTimingPointCells(db, id, parseCellsInput(formData.get("cells")));
+      await saveTimingPointCells(
+        db,
+        id,
+        parseCellsInput(formData.get("cells")),
+      );
       await invalidateArchive(context, deviceId);
       return { success: true };
     }
