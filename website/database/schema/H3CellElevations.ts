@@ -6,7 +6,8 @@ import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
  * (flespi sends 0), so this comes from a terrain model instead.
  *
  * It belongs to the ground, not to a device or a day, which is why there is one row per cell
- * however many devices have passed through it. Filled by `scripts/backfill-elevations.mjs`.
+ * however many devices have passed through it. Nothing fills it automatically: it was
+ * loaded by a one-off backfill from the Open-Meteo elevation API (Copernicus GLO-90).
  */
 export const H3CellElevations = sqliteTable("h3_cell_elevations", {
   h3Cell: text("h3_cell").primaryKey(),

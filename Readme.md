@@ -52,13 +52,7 @@ The `BROWSER` and `EMAIL` bindings are deliberately **not** marked `"remote": tr
 
 None of the trackers report a usable altitude (flespi sends `0`), so ground elevation is stored separately in `h3_cell_elevations`: one row per H3 cell at `TIMING_POINT_H3_RESOLUTION`, the same resolution as `events.h3_cell` and `timing_point_cells.h3_index`, so it joins straight onto either. It describes the ground, not a device or a day, so a cell is stored once however many devices pass through it.
 
-Nothing fills it automatically. To add the route a device drove on given days, run from `website/`:
-
-```
-node scripts/backfill-elevations.mjs --device 2 --date 2025-11-02 --date 2026-11-01 --remote
-```
-
-It takes every cell a fix landed in plus the cells on the straight line between consecutive fixes, so the stored route is continuous, skips cells already stored, and looks the rest up from the Open-Meteo elevation API (Copernicus GLO-90, a roughly 90 m grid that is a surface model, so trees and buildings can show through in towns). Because that grid is far coarser than a cell, it looks up one point per resolution-11 parent (about 50 m across) and shares it with the children. Only cell centres are sent. The free API allows roughly 5,000 locations an hour and 10,000 a day; when that runs out the script saves what it has fetched and stops, and running the same command again carries on.
+Nothing fills it automatically; it was loaded with a one-off backfill for the London to Brighton routes (Catharine, 2025-11-02 and 2026-11-01), covering every cell a fix landed in plus the cells between consecutive fixes. Values come from the Open-Meteo elevation API (Copernicus GLO-90, recorded as `source = 'copernicus-glo90'`), a roughly 90 m surface model, so trees and buildings can show through in towns. Because that grid is far coarser than a cell, each value was looked up at the centre of the cell's resolution-11 parent (about 50 m across) and shared with its children.
 
 ## Error monitoring, logs and traces
 
