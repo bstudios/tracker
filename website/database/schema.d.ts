@@ -5,3 +5,4 @@ export * from "./schema/AccessPasswords";
 export * from "./schema/Devices";
 export * from "./schema/LogbookRemarks";
 export * from "./schema/LogbookCrewChanges";
+export * from "./schema/H3CellElevations";

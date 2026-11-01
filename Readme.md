@@ -48,6 +48,12 @@ PDF_SIGNING_SECRET=local-development-secret
 
 The `BROWSER` and `EMAIL` bindings are deliberately **not** marked `"remote": true`, because that would make every `npm run dev` require Cloudflare credentials. Neither has a working local simulator, so to exercise the workflow end to end run `npx wrangler dev --remote`.
 
+## Elevation
+
+None of the trackers report a usable altitude (flespi sends `0`), so ground elevation is stored separately in `h3_cell_elevations`: one row per H3 cell at `TIMING_POINT_H3_RESOLUTION`, the same resolution as `events.h3_cell` and `timing_point_cells.h3_index`, so it joins straight onto either. It describes the ground, not a device or a day, so a cell is stored once however many devices pass through it.
+
+Nothing fills it automatically; it was loaded with a one-off backfill for the London to Brighton routes (Catharine, 2025-11-02 and 2026-11-01), covering every cell a fix landed in plus the cells between consecutive fixes. Values come from the Open-Meteo elevation API (Copernicus GLO-90, recorded as `source = 'copernicus-glo90'`), a roughly 90 m surface model, so trees and buildings can show through in towns. Because that grid is far coarser than a cell, each value was looked up at the centre of the cell's resolution-11 parent (about 50 m across) and shared with its children.
+
 ## Error monitoring, logs and traces
 
 Everything reports into one Sentry project, from two independent paths.
